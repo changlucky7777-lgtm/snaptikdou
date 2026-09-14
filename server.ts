@@ -317,129 +317,8 @@ async function resolveFinalUrl(rawUrl: string): Promise<string> {
   return currentUrl;
 }
 
-// Native Douyin Extractor powered by HTML SSR & direct ByteDance API
-async function extractFromDouyin(targetUrl: string, originalInput: string) {
-  let awemeId = extractDouyinId(targetUrl) || extractDouyinId(originalInput);
-
-  if (!awemeId) {
-    // If not found in targetUrl, resolve redirects
-    const resolved = await resolveFinalUrl(targetUrl);
-    awemeId = extractDouyinId(resolved);
-  }
-
-  if (!awemeId) {
-    throw new Error('Không thể tìm thấy ID video/bài viết Douyin từ liên kết đã cung cấp');
-  }
-
-  const ttwid = await getTtwid();
-
-  let aweme: any = null;
-
-  // Strategy 1: Fetch HTML SSR page directly (bypasses a_bogus signature checks)
-  try {
-    const pageRes = await smartFetch(`https://www.douyin.com/video/${awemeId}`, {
-      headers: {
-        'User-Agent': DOUYIN_USER_AGENT,
-        Referer: 'https://www.douyin.com/',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        Cookie: ttwid ? `ttwid=${ttwid};` : '',
-      },
-      timeout: 8000,
-    });
-
-    if (pageRes.ok) {
-      const html = await pageRes.text();
-      // 1. Try RENDER_DATA
-      const renderMatch = html.match(/<script id="RENDER_DATA" type="application\/json">([\s\S]*?)<\/script>/);
-      if (renderMatch && renderMatch[1]) {
-        try {
-          const decoded = decodeURIComponent(renderMatch[1].trim());
-          const parsed = JSON.parse(decoded);
-          // Find awemeDetail
-          const detail = parsed?.appContext?._state?.awemeDetail ||
-            parsed?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
-            (Object.values(parsed || {}).find((v: any) => v?.videoInfoRes?.item_list?.[0]) as any)?.videoInfoRes?.item_list?.[0];
-          if (detail) {
-            aweme = detail;
-          }
-        } catch {
-          // ignore parse error
-        }
-      }
-
-      // 2. Try __UNIVERSAL_DATA_FOR_REHYDRATION__
-      if (!aweme) {
-        const uniMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">([\s\S]*?)<\/script>/);
-        if (uniMatch && uniMatch[1]) {
-          try {
-            const parsed = JSON.parse(uniMatch[1]);
-            const loaderData = parsed?.__DEFAULT_SCOPE__?.['webapp.user-sub-route']?.loaderData;
-            const detail = loaderData?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
-              parsed?.__DEFAULT_SCOPE__?.['webapp.video-detail']?.awemeDetail;
-            if (detail) {
-              aweme = detail;
-            }
-          } catch {
-            // ignore
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Douyin HTML SSR fetch error:', err);
-  }
-
-  // Strategy 2: Fetch iesdouyin API
-  if (!aweme) {
-    try {
-      const iesRes = await smartFetch(`https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=${awemeId}`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-          Referer: 'https://www.douyin.com/',
-        },
-        timeout: 6000,
-      });
-      if (iesRes.ok) {
-        const iesJson = await iesRes.json();
-        if (iesJson?.item_list?.[0]) {
-          aweme = iesJson.item_list[0];
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // Strategy 3: Direct web detail endpoint
-  if (!aweme) {
-    try {
-      const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
-      const response = await smartFetch(detailApiUrl, {
-        headers: {
-          'User-Agent': DOUYIN_USER_AGENT,
-          Referer: `https://www.douyin.com/video/${awemeId}`,
-          Accept: 'application/json, text/plain, */*',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          Cookie: ttwid ? `ttwid=${ttwid};` : '',
-        },
-        timeout: 6000,
-      });
-      if (response.ok) {
-        const json = await response.json();
-        if (json?.aweme_detail) {
-          aweme = json.aweme_detail;
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  if (!aweme) {
-    throw new Error('Không thể tải trực tiếp từ Douyin. Chuyển sang phương thức trích xuất dự phòng...');
-  }
-
+// Formatter to standardize Douyin aweme detail into app payload
+function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
   // Determine media type (video vs photo slide / note)
   const isPhotos = Array.isArray(aweme.images) && aweme.images.length > 0;
   const mediaType: 'video' | 'photos' = isPhotos ? 'photos' : 'video';
@@ -648,6 +527,149 @@ async function extractFromDouyin(targetUrl: string, originalInput: string) {
     images,
     platform: 'douyin' as const,
   };
+}
+
+// Douyin Extraction Tiers:
+// Tầng 2: Mobile SSR HTML Page Extractor (trích xuất _ROUTER_DATA / RENDER_DATA / __UNIVERSAL_DATA_FOR_REHYDRATION__)
+async function extractDouyinMobileSSR(awemeId: string, targetUrl: string) {
+  const ttwid = await getTtwid();
+  const urlsToFetch = [
+    `https://www.douyin.com/share/video/${awemeId}`,
+    `https://www.douyin.com/video/${awemeId}`,
+    `https://www.iesdouyin.com/share/video/${awemeId}/`,
+  ];
+
+  for (const pageUrl of urlsToFetch) {
+    try {
+      const pageRes = await smartFetch(pageUrl, {
+        headers: {
+          'User-Agent': DOUYIN_MOBILE_USER_AGENT,
+          Referer: 'https://www.douyin.com/',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          Cookie: ttwid ? `ttwid=${ttwid};` : '',
+        },
+        timeout: 5000,
+        useProxy: true,
+      });
+
+      if (!pageRes.ok) continue;
+      const html = await pageRes.text();
+
+      // 1. window._ROUTER_DATA / window._SSR_DATA
+      const routerMatch =
+        html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\});<\/script>/) ||
+        html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\})\s*;/);
+      if (routerMatch && routerMatch[1]) {
+        try {
+          const parsed = JSON.parse(routerMatch[1]);
+          const loaderData = parsed?.loaderData;
+          const item =
+            loaderData?.[`video_(id)/page`]?.videoInfoRes?.item_list?.[0] ||
+            loaderData?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
+            parsed?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
+            loaderData?.['video-detail']?.awemeDetail;
+          if (item) {
+            return formatDouyinAweme(item, targetUrl, awemeId);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // 2. RENDER_DATA
+      const renderMatch = html.match(/<script id="RENDER_DATA" type="application\/json">([\s\S]*?)<\/script>/);
+      if (renderMatch && renderMatch[1]) {
+        try {
+          const decoded = decodeURIComponent(renderMatch[1].trim());
+          const parsed = JSON.parse(decoded);
+          const detail =
+            parsed?.appContext?._state?.awemeDetail ||
+            parsed?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
+            (Object.values(parsed || {}).find((v: any) => v?.videoInfoRes?.item_list?.[0]) as any)?.videoInfoRes?.item_list?.[0];
+          if (detail) {
+            return formatDouyinAweme(detail, targetUrl, awemeId);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // 3. __UNIVERSAL_DATA_FOR_REHYDRATION__
+      const uniMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">([\s\S]*?)<\/script>/);
+      if (uniMatch && uniMatch[1]) {
+        try {
+          const parsed = JSON.parse(uniMatch[1]);
+          const loaderData = parsed?.__DEFAULT_SCOPE__?.['webapp.user-sub-route']?.loaderData;
+          const detail =
+            loaderData?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
+            loaderData?.[`video_(id)/page`]?.videoInfoRes?.item_list?.[0] ||
+            parsed?.__DEFAULT_SCOPE__?.['webapp.video-detail']?.awemeDetail;
+          if (detail) {
+            return formatDouyinAweme(detail, targetUrl, awemeId);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    } catch (err: any) {
+      console.warn('Douyin Mobile SSR attempt failed for', pageUrl, err?.message || err);
+    }
+  }
+  return null;
+}
+
+// Tầng 3: Native ByteDance API qua WARP SOCKS5 Proxy (127.0.0.1:40000)
+async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: string) {
+  const ttwid = await getTtwid();
+
+  // 1. iesdouyin iteminfo API
+  try {
+    const iesRes = await smartFetch(`https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=${awemeId}`, {
+      headers: {
+        'User-Agent': DOUYIN_MOBILE_USER_AGENT,
+        Referer: 'https://www.douyin.com/',
+        Accept: 'application/json, text/plain, */*',
+        Cookie: ttwid ? `ttwid=${ttwid};` : '',
+      },
+      timeout: 6000,
+      useProxy: true,
+    });
+    if (iesRes.ok) {
+      const iesJson = await iesRes.json();
+      if (iesJson?.item_list?.[0]) {
+        return formatDouyinAweme(iesJson.item_list[0], targetUrl, awemeId);
+      }
+    }
+  } catch (e: any) {
+    console.warn('Douyin ies API fetch failed:', e?.message || e);
+  }
+
+  // 2. douyin.com webapp detail endpoint
+  try {
+    const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
+    const response = await smartFetch(detailApiUrl, {
+      headers: {
+        'User-Agent': DOUYIN_USER_AGENT,
+        Referer: `https://www.douyin.com/video/${awemeId}`,
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        Cookie: ttwid ? `ttwid=${ttwid};` : '',
+      },
+      timeout: 6000,
+      useProxy: true,
+    });
+    if (response.ok) {
+      const json = await response.json();
+      if (json?.aweme_detail) {
+        return formatDouyinAweme(json.aweme_detail, targetUrl, awemeId);
+      }
+    }
+  } catch (e: any) {
+    console.warn('Douyin Web Detail API fetch failed:', e?.message || e);
+  }
+
+  return null;
 }
 
 // TikTok Official ByteDance Mobile Feed Extractor (Tier 1: Direct, highest quality, no watermark)
@@ -1125,19 +1147,10 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
     const targetIsDouyin = isDouyinUrl(resolvedUrl) || isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
 
     if (targetIsDouyin) {
-      // Tier 1: Native Douyin scraper via HTML SSR & ByteDance web API
-      try {
-        const douyinData = await extractFromDouyin(resolvedUrl, cleanTargetUrl || trimmedUrl);
-        if (douyinData) {
-          res.json({ success: true, data: douyinData });
-          return;
-        }
-      } catch (douyinError: any) {
-        console.warn('Douyin native extraction failed, gracefully falling back to external extractors:', douyinError?.message || douyinError);
-      }
+      const douyinUrlsToTry = [cleanTargetUrl, trimmedUrl, resolvedUrl].filter(Boolean);
+      const awemeId = extractDouyinId(resolvedUrl) || extractDouyinId(cleanTargetUrl) || extractDouyinId(trimmedUrl);
 
-      // Tier 2: Fallback to TikWM for Douyin links (using both resolvedUrl & cleanTargetUrl)
-      const douyinUrlsToTry = [resolvedUrl, cleanTargetUrl, trimmedUrl].filter(Boolean);
+      // TẦNG 1 (TikWM Engine): Nhận diện cả link ngắn (v.douyin.com/...) và link chuẩn, bóc tách nhanh trong 0.3s
       for (const dUrl of douyinUrlsToTry) {
         try {
           const tikwmData = await extractFromTikWM(dUrl);
@@ -1145,7 +1158,7 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
             const isPhotoSlide = Array.isArray(tikwmData.images) && tikwmData.images.length > 0;
             const mediaType = isPhotoSlide ? 'photos' : 'video';
             const result = {
-              id: String(tikwmData.id || Date.now()),
+              id: String(tikwmData.id || awemeId || Date.now()),
               url: resolvedUrl || cleanTargetUrl,
               title: tikwmData.title || 'Douyin Media',
               mediaType,
@@ -1190,12 +1203,39 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
             res.json({ success: true, data: result });
             return;
           }
-        } catch {
-          // try next url variant
+        } catch (tikwmErr: any) {
+          // Log and seamlessly failover to Tier 2
+          console.warn('Douyin Tier 1 (TikWM) failed for', dUrl, tikwmErr?.message || tikwmErr);
         }
       }
 
-      // Tier 3: Fallback to Tiklydown for Douyin links
+      // TẦNG 2 (Trang chia sẻ Mobile HTML): Trích xuất window._ROUTER_DATA / RENDER_DATA từ trang SSR của ByteDance
+      if (awemeId) {
+        try {
+          const ssrData = await extractDouyinMobileSSR(awemeId, resolvedUrl || cleanTargetUrl);
+          if (ssrData) {
+            res.json({ success: true, data: ssrData });
+            return;
+          }
+        } catch (ssrErr: any) {
+          console.warn('Douyin Tier 2 (Mobile SSR) failed:', ssrErr?.message || ssrErr);
+        }
+      }
+
+      // TẦNG 3 (Native API qua WARP SOCKS5): Kết nối qua cổng proxy 127.0.0.1:40000 của Cloudflare WARP
+      if (awemeId) {
+        try {
+          const warpNativeData = await extractDouyinNativeApiWarp(awemeId, resolvedUrl || cleanTargetUrl);
+          if (warpNativeData) {
+            res.json({ success: true, data: warpNativeData });
+            return;
+          }
+        } catch (warpErr: any) {
+          console.warn('Douyin Tier 3 (Native WARP API) failed:', warpErr?.message || warpErr);
+        }
+      }
+
+      // Fallback Tier 4: Tiklydown backup scraper
       for (const dUrl of douyinUrlsToTry) {
         try {
           const tiklyData = await extractFromTiklydown(dUrl);
