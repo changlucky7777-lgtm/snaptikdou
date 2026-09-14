@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      (function() {
+        try {
+          var desc = Object.getOwnPropertyDescriptor(window, 'fetch') || Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), 'fetch');
+          if (desc && (!desc.writable || !desc.set)) {
+            var _origFetch = window.fetch;
+            Object.defineProperty(window, 'fetch', {
+              get: function() { return _origFetch; },
+              set: function(fn) { _origFetch = fn; },
+              configurable: true,
+              enumerable: true
+            });
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SnapTikDou - Tải Video, Audio, Photo slide TikTok & Douyin không dính Logo</title>
+    <meta name="description" content="Nền tảng tải video, audio, photo slide TikTok & Douyin (抖音) không dính Logo." />
+    <meta property="og:title" content="SnapTikDou - Tải Video, Audio, Photo slide TikTok & Douyin không dính Logo" />
+    <meta property="og:description" content="Nền tảng tải video, audio, photo slide TikTok & Douyin (抖音) không dính Logo." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
