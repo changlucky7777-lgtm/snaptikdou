@@ -14,11 +14,15 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Standard User-Agent to prevent CDN blocks
+// Standard User-Agents to prevent CDN blocks
 const TIKTOK_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const DOUYIN_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const DOUYIN_MOBILE_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1';
+const TIKTOK_MOBILE_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1';
 
 // Cloudflare WARP SOCKS5 Proxy Configuration
 const WARP_SOCKS_URL = process.env.WARP_PROXY || 'socks5h://127.0.0.1:40000';
@@ -176,13 +180,26 @@ function isTikTokUrl(url: string): boolean {
   return /tiktok\.com/i.test(url);
 }
 
+// Extract clean URL from raw user input text
+function extractCleanUrl(rawInput: string): string {
+  if (!rawInput || typeof rawInput !== 'string') return '';
+  const trimmed = rawInput.trim();
+  // Match standard http/https URLs up to whitespace, quotes, or chinese punctuation
+  const match = trimmed.match(/https?:\/\/[^\s"'<>\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/i);
+  if (match && match[0]) {
+    return match[0].replace(/[.,;:!?)\]}]+$/, '');
+  }
+  return trimmed;
+}
+
 // Extract Douyin item ID from various URL patterns
 function extractDouyinId(urlOrText: string): string | null {
+  if (!urlOrText || typeof urlOrText !== 'string') return null;
   const patterns = [
-    /(?:video|note|share\/video)\/(\d{15,25})/,
-    /[?&]modal_id=(\d{15,25})/,
-    /[?&]item_ids?=(\d{15,25})/,
-    /aweme_id=(\d{15,25})/,
+    /(?:video|note|share\/video)\/(\d{15,25})/i,
+    /[?&]modal_id=(\d{15,25})/i,
+    /[?&]item_ids?=(\d{15,25})/i,
+    /aweme_id=(\d{15,25})/i,
     /(\d{19})/,
   ];
   for (const p of patterns) {
@@ -250,27 +267,32 @@ async function getTtwid(): Promise<string> {
 
 // Helper to resolve shortlinks (vt.tiktok.com, vm.tiktok.com, v.douyin.com)
 async function resolveFinalUrl(rawUrl: string): Promise<string> {
-  let currentUrl = rawUrl.trim();
-  const urlMatch = currentUrl.match(/https?:\/\/[^\s"'<>]+/);
-  if (urlMatch) {
-    currentUrl = urlMatch[0];
-  }
+  let currentUrl = extractCleanUrl(rawUrl);
 
   // If URL already contains a valid ID, avoid redundant redirects
   if (extractDouyinId(currentUrl) || extractTikTokId(currentUrl)) {
     return currentUrl;
   }
 
+  const isDouyin = isDouyinUrl(currentUrl);
+  const ttwid = isDouyin ? await getTtwid() : '';
+
   // Follow up to 8 redirects to capture ultimate URL and query parameters
   for (let i = 0; i < 8; i++) {
     try {
+      const headers: Record<string, string> = {
+        'User-Agent': isDouyin ? DOUYIN_MOBILE_USER_AGENT : TIKTOK_MOBILE_USER_AGENT,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': isDouyin ? 'zh-CN,zh;q=0.9,en;q=0.8' : 'en-US,en;q=0.9',
+      };
+      if (isDouyin && ttwid) {
+        headers['Cookie'] = `ttwid=${ttwid};`;
+      }
+
       const res = await smartFetch(currentUrl, {
         method: 'GET',
         redirect: 'manual',
-        headers: {
-          'User-Agent': isDouyinUrl(currentUrl) ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT,
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
+        headers,
         timeout: 6000,
       });
 
@@ -1081,8 +1103,9 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
     }
 
     const trimmedUrl = url.trim();
-    const isDouyin = isDouyinUrl(trimmedUrl);
-    const isTikTok = isTikTokUrl(trimmedUrl);
+    const cleanTargetUrl = extractCleanUrl(trimmedUrl);
+    const isDouyin = isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
+    const isTikTok = isTikTokUrl(cleanTargetUrl) || isTikTokUrl(trimmedUrl);
 
     if (!isDouyin && !isTikTok) {
       // Check if text contains a link to either platform
@@ -1098,25 +1121,32 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
     }
 
     // Resolve shortlink if needed (e.g. v.douyin.com, vt.tiktok.com)
-    const resolvedUrl = await resolveFinalUrl(trimmedUrl);
-    const targetIsDouyin = isDouyinUrl(resolvedUrl) || isDouyinUrl(trimmedUrl);
+    const resolvedUrl = await resolveFinalUrl(cleanTargetUrl || trimmedUrl);
+    const targetIsDouyin = isDouyinUrl(resolvedUrl) || isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
 
     if (targetIsDouyin) {
+      // Tier 1: Native Douyin scraper via HTML SSR & ByteDance web API
       try {
-        const douyinData = await extractFromDouyin(resolvedUrl, trimmedUrl);
-        res.json({ success: true, data: douyinData });
-        return;
+        const douyinData = await extractFromDouyin(resolvedUrl, cleanTargetUrl || trimmedUrl);
+        if (douyinData) {
+          res.json({ success: true, data: douyinData });
+          return;
+        }
       } catch (douyinError: any) {
-        console.warn('Douyin native extraction failed, trying TikWM fallback:', douyinError?.message || douyinError);
-        // Fallback to TikWM for Douyin links
+        console.warn('Douyin native extraction failed, gracefully falling back to external extractors:', douyinError?.message || douyinError);
+      }
+
+      // Tier 2: Fallback to TikWM for Douyin links (using both resolvedUrl & cleanTargetUrl)
+      const douyinUrlsToTry = [resolvedUrl, cleanTargetUrl, trimmedUrl].filter(Boolean);
+      for (const dUrl of douyinUrlsToTry) {
         try {
-          const tikwmData = await extractFromTikWM(resolvedUrl);
+          const tikwmData = await extractFromTikWM(dUrl);
           if (tikwmData && (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))) {
             const isPhotoSlide = Array.isArray(tikwmData.images) && tikwmData.images.length > 0;
             const mediaType = isPhotoSlide ? 'photos' : 'video';
             const result = {
               id: String(tikwmData.id || Date.now()),
-              url: resolvedUrl,
+              url: resolvedUrl || cleanTargetUrl,
               title: tikwmData.title || 'Douyin Media',
               mediaType,
               cover: normalizeMediaUrl(tikwmData.cover || tikwmData.origin_cover),
@@ -1161,26 +1191,30 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
             return;
           }
         } catch {
-          // Douyin native and TikWM failed, try Tiklydown fallback
-          try {
-            const tiklyData = await extractFromTiklydown(resolvedUrl);
-            if (tiklyData) {
-              res.json({ success: true, data: { ...tiklyData, platform: 'douyin' as const } });
-              return;
-            }
-          } catch {
-            // all failed
-          }
+          // try next url variant
         }
-
-        const errMsg = douyinError?.message || 'Không thể trích xuất dữ liệu từ video/bài viết Douyin.';
-        res.status(422).json({
-          success: false,
-          error: errMsg,
-          message: errMsg,
-        });
-        return;
       }
+
+      // Tier 3: Fallback to Tiklydown for Douyin links
+      for (const dUrl of douyinUrlsToTry) {
+        try {
+          const tiklyData = await extractFromTiklydown(dUrl);
+          if (tiklyData) {
+            res.json({ success: true, data: { ...tiklyData, platform: 'douyin' as const } });
+            return;
+          }
+        } catch {
+          // try next
+        }
+      }
+
+      const errMsg = 'Không thể trích xuất dữ liệu từ video/bài viết Douyin. Vui lòng kiểm tra lại liên kết hoặc thử lại sau vài giây.';
+      res.status(422).json({
+        success: false,
+        error: errMsg,
+        message: errMsg,
+      });
+      return;
     }
 
     // TikTok extraction pipeline:
