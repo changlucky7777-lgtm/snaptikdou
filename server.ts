@@ -14,6 +14,37 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Thêm vào server.ts trên Hetzner:
+const RENDER_RELAY_URL = 'https://douyin-proxy-render.onrender.com/api/fetch';
+const RENDER_AUTH_TOKEN = 'k8dF92mZx2026Secure';
+
+// Helper gửi request Douyin thông qua Render Singapore
+async function fetchViaRender(targetUrl: string, fetchOptions: any = {}) {
+  const response = await fetch(RENDER_RELAY_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-auth-token': RENDER_AUTH_TOKEN,
+    },
+    body: JSON.stringify({
+      url: targetUrl,
+      options: fetchOptions,
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Render relay HTTP error: ${response.status}`);
+  }
+
+  const result = (await response.json()) as any;
+  if (!result.success && result.status >= 400) {
+    throw new Error(`Douyin API error via Render: ${result.status}`);
+  }
+
+  return result.data;
+}
+
 // Standard User-Agents to prevent CDN blocks
 const TIKTOK_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -645,25 +676,40 @@ async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: string) {
     console.warn('Douyin ies API fetch failed:', e?.message || e);
   }
 
-  // 2. douyin.com webapp detail endpoint
+  // 2. douyin.com webapp detail endpoint (qua Render Relay & Proxy)
   try {
     const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
-    const response = await smartFetch(detailApiUrl, {
-      headers: {
-        'User-Agent': DOUYIN_USER_AGENT,
-        Referer: `https://www.douyin.com/video/${awemeId}`,
-        Accept: 'application/json, text/plain, */*',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        Cookie: ttwid ? `ttwid=${ttwid};` : '',
-      },
-      timeout: 6000,
-      useProxy: true,
-    });
-    if (response.ok) {
-      const json = await response.json();
-      if (json?.aweme_detail) {
-        return formatDouyinAweme(json.aweme_detail, targetUrl, awemeId);
+    let json: any = null;
+    try {
+      json = await fetchViaRender(detailApiUrl, {
+        headers: {
+          'User-Agent': DOUYIN_USER_AGENT,
+          Referer: `https://www.douyin.com/video/${awemeId}`,
+          Accept: 'application/json, text/plain, */*',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          Cookie: ttwid ? `ttwid=${ttwid};` : '',
+        },
+      });
+    } catch (renderErr: any) {
+      console.warn('fetchViaRender detailApiUrl failed, falling back to smartFetch:', renderErr?.message || renderErr);
+      const response = await smartFetch(detailApiUrl, {
+        headers: {
+          'User-Agent': DOUYIN_USER_AGENT,
+          Referer: `https://www.douyin.com/video/${awemeId}`,
+          Accept: 'application/json, text/plain, */*',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          Cookie: ttwid ? `ttwid=${ttwid};` : '',
+        },
+        timeout: 6000,
+        useProxy: true,
+      });
+      if (response.ok) {
+        json = await response.json();
       }
+    }
+
+    if (json?.aweme_detail) {
+      return formatDouyinAweme(json.aweme_detail, targetUrl, awemeId);
     }
   } catch (e: any) {
     console.warn('Douyin Web Detail API fetch failed:', e?.message || e);
