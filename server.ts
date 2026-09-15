@@ -22,33 +22,55 @@ const CLOUDFLARE_AUTH_TOKEN =
 const RENDER_RELAY_URL = CLOUDFLARE_WORKER_URL;
 const RENDER_AUTH_TOKEN = CLOUDFLARE_AUTH_TOKEN;
 
-// Bóc tách dữ liệu Douyin trực tiếp qua Cloudflare Worker
+// Wrapper gọi Worker từ Cloudflare Worker Endpoint
 async function fetchFromRenderWorker(rawUrlOrClean: string) {
   const cleanUrl = extractCleanUrl(rawUrlOrClean) || rawUrlOrClean;
-  const workerBase = CLOUDFLARE_WORKER_URL.replace(/\/$/, '');
+  const workerBase =
+    process.env.CLOUDFLARE_WORKER_URL ||
+    process.env.RENDER_WORKER_URL ||
+    'https://douyin-resolver.changlucky7777.workers.dev';
+  const authToken = process.env.WORKER_AUTH_TOKEN || RENDER_AUTH_TOKEN;
 
   try {
-    const res = await fetch(workerBase, {
+    const res = await fetch(workerBase.replace(/\/$/, ''), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-auth-token': CLOUDFLARE_AUTH_TOKEN,
+        'x-auth-token': authToken,
       },
       body: JSON.stringify({ url: cleanUrl }),
-      signal: AbortSignal.timeout(12000), // Cloudflare phản hồi dưới 2 giây
+      signal: AbortSignal.timeout(15000),
     });
 
     if (res.ok) {
       const json = (await res.json()) as any;
-      if (json.data) {
-        return formatDouyinAweme(json.data, cleanUrl, json.awemeId || extractDouyinId(cleanUrl) || '');
+      // Trích xuất aweme_detail và format về chuẩn app SnapTikDou
+      const awemeDetail = json.aweme_detail || json.data?.aweme_detail || json.data;
+      const awemeId = json.awemeId || extractDouyinId(cleanUrl) || '';
+
+      if (awemeDetail) {
+        return formatDouyinAweme(awemeDetail, cleanUrl, awemeId);
+      }
+      if (json.video?.noWatermark) {
+        return json;
       }
     }
-  } catch (err) {
-    console.warn('Edge Worker fetch failed:', err);
+  } catch (err: any) {
+    console.warn('[Worker] Lỗi kết nối:', err?.message || err);
+  }
+
+  // Fallback nếu có awemeId trực tiếp
+  const localAwemeId = extractDouyinId(cleanUrl);
+  if (localAwemeId) {
+    return extractDouyinFromRenderWorker(localAwemeId, cleanUrl);
   }
 
   return null;
+}
+
+// Helper fallback trích xuất Douyin trực tiếp khi có awemeId
+async function extractDouyinFromRenderWorker(awemeId: string, targetUrl: string) {
+  return extractDouyinNativeApiWarp(awemeId, targetUrl);
 }
 
 // Alias tương thích ngược
