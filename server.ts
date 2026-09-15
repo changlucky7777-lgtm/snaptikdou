@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import path from 'path';
 import zlib from 'zlib';
@@ -13,85 +14,45 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// --- CẤU HÌNH TRẠM TRUNG CHUYỂN RENDER SINGAPORE CHO DOUYIN ---
-const RENDER_RELAY_URL = 'https://douyin-proxy-render.onrender.com/api/fetch';
-const RENDER_AUTH_TOKEN = 'k8dF92mZx2026Secure';
+// --- CẤU HÌNH TRẠM TRUNG CHUYỂN CLOUDFLARE EDGE CHO DOUYIN ---
+const CLOUDFLARE_WORKER_URL =
+  process.env.CLOUDFLARE_WORKER_URL || 'https://douyin-resolver.changlucky7777.workers.dev';
+const CLOUDFLARE_AUTH_TOKEN =
+  process.env.WORKER_AUTH_TOKEN || 'k8dF92mZx2026Secure';
+const RENDER_RELAY_URL = CLOUDFLARE_WORKER_URL;
+const RENDER_AUTH_TOKEN = CLOUDFLARE_AUTH_TOKEN;
 
-async function fetchViaRender(targetUrl: string, fetchOptions: any = {}) {
-  const response = await fetch(RENDER_RELAY_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-auth-token': RENDER_AUTH_TOKEN,
-    },
-    body: JSON.stringify({
-      url: targetUrl,
-      options: fetchOptions,
-    }),
-    signal: AbortSignal.timeout(15000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Render relay HTTP error: ${response.status}`);
-  }
-
-  const result = (await response.json()) as any;
-  return result.data;
-}
-
-// Helper trích xuất Douyin trực tiếp thông qua Render Worker (Tầng 1)
-async function extractDouyinFromRenderWorker(awemeId: string, targetUrl: string) {
-  const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
-  const ttwid = await getTtwid().catch(() => '');
-  const data = await fetchViaRender(detailApiUrl, {
-    headers: {
-      'User-Agent': DOUYIN_USER_AGENT,
-      Referer: `https://www.douyin.com/video/${awemeId}`,
-      Accept: 'application/json, text/plain, */*',
-      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      Cookie: ttwid ? `ttwid=${ttwid};` : '',
-    },
-  });
-
-  if (data?.aweme_detail) {
-    return formatDouyinAweme(data.aweme_detail, targetUrl, awemeId);
-  }
-  return null;
-}
-
-// Wrapper gọi Worker từ Render Worker Endpoint trực tiếp hoặc qua relay
+// Bóc tách dữ liệu Douyin trực tiếp qua Cloudflare Worker
 async function fetchFromRenderWorker(rawUrlOrClean: string) {
   const cleanUrl = extractCleanUrl(rawUrlOrClean) || rawUrlOrClean;
-  let awemeId = extractDouyinId(cleanUrl);
-  if (!awemeId) {
-    const resolved = await resolveFinalUrl(cleanUrl);
-    awemeId = extractDouyinId(resolved);
-  }
-  if (!awemeId) return null;
+  const workerBase = CLOUDFLARE_WORKER_URL.replace(/\/$/, '');
 
-  const workerBase = process.env.RENDER_WORKER_URL || 'https://douyin-proxy-render.onrender.com';
-  // Nếu worker có endpoint riêng bóc tách trực tiếp
   try {
-    const res = await fetch(`${workerBase.replace(/\/$/, '')}/api/douyin/extract`, {
+    const res = await fetch(workerBase, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-auth-token': RENDER_AUTH_TOKEN,
+        'x-auth-token': CLOUDFLARE_AUTH_TOKEN,
       },
       body: JSON.stringify({ url: cleanUrl }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(12000), // Cloudflare phản hồi dưới 2 giây
     });
+
     if (res.ok) {
-      const json = await res.json() as any;
-      if (json.data) return json.data;
-      if (json.video?.noWatermark) return json;
+      const json = (await res.json()) as any;
+      if (json.data) {
+        return formatDouyinAweme(json.data, cleanUrl, json.awemeId || extractDouyinId(cleanUrl) || '');
+      }
     }
-  } catch {
-    // Fallback sang extractDouyinFromRenderWorker
+  } catch (err) {
+    console.warn('Edge Worker fetch failed:', err);
   }
 
-  return extractDouyinFromRenderWorker(awemeId, cleanUrl);
+  return null;
 }
+
+// Alias tương thích ngược
+const fetchFromCloudflareWorker = fetchFromRenderWorker;
 
 // Standard User-Agents to prevent CDN blocks
 const TIKTOK_USER_AGENT =
@@ -263,7 +224,10 @@ function isTikTokUrl(url: string): boolean {
 // Trích xuất chuẩn xác link URL đầu tiên có trong văn bản (Sanitize Input)
 function extractCleanUrl(rawInput: string): string {
   if (!rawInput || typeof rawInput !== 'string') return '';
-  const match = rawInput.match(/https?:\/\/[^\s"'<>\[\]\(\)\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/i);
+  // Chuẩn hóa ký tự khoảng trắng đặc biệt từ Douyin/WeChat sang space thường
+  const normalized = rawInput.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000\ufeff]/g, ' ');
+  // Bắt chính xác link http/https dừng lại trước dấu cách hoặc ký tự tiếng Trung
+  const match = normalized.match(/https?:\/\/[^\s"'<>\[\]\(\)\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/i);
   return match ? match[0].replace(/[.,;:!?)\]}]+$/, '').trim() : rawInput.trim();
 }
 
@@ -709,15 +673,13 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
   const awemeId = extractDouyinId(cleanUrl) || extractDouyinId(douyinUrl);
   const targetUrl = originalUrl || cleanUrl;
 
-  // 1. Thử qua Render Worker Singapore
-  if (awemeId) {
-    try {
-      const renderData = await extractDouyinFromRenderWorker(awemeId, targetUrl);
-      if (renderData) return renderData;
-    } catch {}
-  }
+  // 1. Ưu tiên qua Cloudflare Worker Edge (Giải quyết triệt để rào cản IP châu Á)
+  try {
+    const cfData = await fetchFromCloudflareWorker(cleanUrl);
+    if (cfData) return cfData;
+  } catch {}
 
-  // 2. Thử qua Mobile HTML _ROUTER_DATA
+  // 2. Thử qua Mobile HTML _ROUTER_DATA (Fallback)
   if (awemeId) {
     try {
       const mobileData = await extractDouyinMobileHtml(awemeId, targetUrl);
@@ -908,40 +870,26 @@ async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: string) {
     console.warn('Douyin ies API fetch failed:', e?.message || e);
   }
 
-  // 2. douyin.com webapp detail endpoint (qua Render Relay & Proxy)
+  // 2. douyin.com webapp detail endpoint (qua smartFetch / WARP Proxy)
   try {
     const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
-    let json: any = null;
-    try {
-      json = await fetchViaRender(detailApiUrl, {
-        headers: {
-          'User-Agent': DOUYIN_USER_AGENT,
-          Referer: `https://www.douyin.com/video/${awemeId}`,
-          Accept: 'application/json, text/plain, */*',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          Cookie: ttwid ? `ttwid=${ttwid};` : '',
-        },
-      });
-    } catch (renderErr: any) {
-      console.warn('fetchViaRender detailApiUrl failed, falling back to smartFetch:', renderErr?.message || renderErr);
-      const response = await smartFetch(detailApiUrl, {
-        headers: {
-          'User-Agent': DOUYIN_USER_AGENT,
-          Referer: `https://www.douyin.com/video/${awemeId}`,
-          Accept: 'application/json, text/plain, */*',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          Cookie: ttwid ? `ttwid=${ttwid};` : '',
-        },
-        timeout: 6000,
-        useProxy: true,
-      });
-      if (response.ok) {
-        json = await response.json();
-      }
-    }
+    const response = await smartFetch(detailApiUrl, {
+      headers: {
+        'User-Agent': DOUYIN_USER_AGENT,
+        Referer: `https://www.douyin.com/video/${awemeId}`,
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        Cookie: ttwid ? `ttwid=${ttwid};` : '',
+      },
+      timeout: 6000,
+      useProxy: true,
+    });
 
-    if (json?.aweme_detail) {
-      return formatDouyinAweme(json.aweme_detail, targetUrl, awemeId);
+    if (response.ok) {
+      const json = await response.json();
+      if (json?.aweme_detail) {
+        return formatDouyinAweme(json.aweme_detail, targetUrl, awemeId);
+      }
     }
   } catch (e: any) {
     console.warn('Douyin Web Detail API fetch failed:', e?.message || e);
@@ -1427,16 +1375,14 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
     if (targetIsDouyin) {
       const cleanUrl = extractCleanUrl(trimmedUrl) || trimmedUrl;
 
-      // 1. Thử qua Render Worker (Singapore) trước
+      // 1. Tầng 1: Cloudflare Edge Worker
       try {
-        if (process.env.RENDER_WORKER_URL || RENDER_RELAY_URL) {
-          const workerData = await fetchFromRenderWorker(cleanUrl);
-          if (workerData && (workerData.video?.noWatermark || workerData.images?.length > 0)) {
-            return res.json({ success: true, data: workerData });
-          }
+        const cfWorkerData = await fetchFromCloudflareWorker(cleanUrl);
+        if (cfWorkerData && (cfWorkerData.video?.noWatermark || cfWorkerData.images?.length > 0)) {
+          return res.json({ success: true, data: cfWorkerData });
         }
       } catch (workerErr) {
-        console.warn('Render Worker không phản hồi (có thể đang Cold Start):', workerErr);
+        console.warn('Cloudflare Worker không phản hồi:', workerErr);
       }
 
       // 2. Thử Tầng Mobile HTML Scrape
