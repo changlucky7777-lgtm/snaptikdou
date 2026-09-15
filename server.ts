@@ -13,11 +13,10 @@ const PORT = 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Thêm vào server.ts trên Hetzner:
+// --- CẤU HÌNH TRẠM TRUNG CHUYỂN RENDER SINGAPORE CHO DOUYIN ---
 const RENDER_RELAY_URL = 'https://douyin-proxy-render.onrender.com/api/fetch';
 const RENDER_AUTH_TOKEN = 'k8dF92mZx2026Secure';
 
-// Helper gửi request Douyin thông qua Render Singapore
 async function fetchViaRender(targetUrl: string, fetchOptions: any = {}) {
   const response = await fetch(RENDER_RELAY_URL, {
     method: 'POST',
@@ -37,10 +36,6 @@ async function fetchViaRender(targetUrl: string, fetchOptions: any = {}) {
   }
 
   const result = (await response.json()) as any;
-  if (!result.success && result.status >= 400) {
-    throw new Error(`Douyin API error via Render: ${result.status}`);
-  }
-
   return result.data;
 }
 
