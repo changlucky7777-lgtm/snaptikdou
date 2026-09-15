@@ -631,16 +631,22 @@ export async function streamFetchBlob(
   return blob;
 }
 
+// Tải trực tiếp qua trình duyệt (Native Download)
+export function downloadDirectFile(url: string, filename: string) {
+  // Đi qua proxy stream của server để chống chặn Referer
+  const proxyUrl = `/api/tiktok/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
+  
+  const a = document.createElement('a');
+  a.href = proxyUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 // Nếu là video hoặc tệp dung lượng lớn (> 50MB), kích hoạt tải native của trình duyệt
 export function triggerNativeDownload(downloadUrl: string, filename: string) {
-  const link = document.createElement('a');
-  // Chuyển hướng qua route proxy download của server
-  link.href = `/api/tiktok/download?url=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
-  link.setAttribute('download', filename);
-  link.target = '_blank';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  downloadDirectFile(downloadUrl, filename);
 }
 
 // Trigger reliable browser download for an external media URL without opening media player

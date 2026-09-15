@@ -10,6 +10,7 @@ import {
   triggerBlobDownload,
   triggerNativeBrowserDownload,
   downloadBlobSafely,
+  downloadDirectFile,
   createClientZipArchive,
   createDownloadSession,
   DownloadSession,
@@ -220,83 +221,13 @@ export default function App() {
           resolution: type === 'video_hd' ? 'HD' : 'SD',
         });
 
-        const initialUrl = primaryUrl || fallbackUrl;
-        const backupUrls = media.video.backupUrls || [];
+        const videoUrl = primaryUrl || fallbackUrl;
 
-        const downloadPayload = {
-          url: initialUrl,
-          fallbackUrl: fallbackUrl && fallbackUrl !== initialUrl ? fallbackUrl : '',
-          backupUrls,
-          postUrl: media.url,
-          mediaType: 'video',
-          resolution: type === 'video_hd' ? 'hd' : 'sd',
-          filename: pathData.filename,
-        };
-
-        const downloadParams = new URLSearchParams({
-          url: initialUrl,
-          fallbackUrl: fallbackUrl || '',
-          postUrl: media.url,
-          mediaType: 'video',
-          resolution: type === 'video_hd' ? 'hd' : 'sd',
-          filename: pathData.filename,
-        });
-        if (backupUrls && backupUrls.length > 0) {
-          downloadParams.set('backupUrls', backupUrls.join(','));
-        }
-        const downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
-
-        // Direct CDN First Strategy:
-        // Try fetching directly from the origin CDN first (bypassing VPS network bandwidth & CPU)
-        // If CDN blocks via CORS or strict token/cookies, smoothly fallback to VPS /api/tiktok/download stream
-        setDownloadProgressText(`Đang tải video ${type === 'video_hd' ? 'HD (1080p)' : 'SD'}...`);
-        let blob: Blob | null = null;
-
-        // Step 1: Ưu tiên tải trực tiếp từ CDN nguồn (0 MB băng thông VPS)
-        if (initialUrl && !initialUrl.startsWith('/api/')) {
-          try {
-            blob = await streamFetchBlob(initialUrl, (p) => setDownloadProgressText(p), 25000, undefined, session);
-          } catch (cdnErr: any) {
-            if (session.isCancelled || cdnErr?.name === 'AbortError') throw cdnErr;
-            console.warn('Direct CDN fetch failed or blocked, falling back to proxy stream:', cdnErr?.message || cdnErr);
-          }
-        }
-
-        // Step 2: Dự phòng qua VPS Proxy Stream nếu CDN nguồn bị chặn
-        if (!blob) {
-          try {
-            blob = await streamFetchBlob(
-              '/api/tiktok/download',
-              (progressText) => setDownloadProgressText(progressText),
-              45000,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(downloadPayload),
-              },
-              session
-            );
-          } catch (err: any) {
-            if (session.isCancelled || err?.name === 'AbortError') throw err;
-            try {
-              blob = await streamFetchBlob(downloadUrl, (p) => setDownloadProgressText(p), 45000, undefined, session);
-            } catch (err2: any) {
-              if (session.isCancelled || err2?.name === 'AbortError') throw err2;
-            }
-          }
-        }
-
-        if (session.isCancelled) return;
-
-        if (blob) {
-          await downloadBlobSafely(blob, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, type, 'video');
-          setDownloadProgressText('Tải video thành công!');
-        } else {
-          // Fallback to direct anchor download if blob streaming was interrupted
-          triggerNativeBrowserDownload(downloadUrl, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, type, 'video');
-        }
+        // Kích hoạt tải trực tiếp qua trình duyệt (Native Download): trình duyệt tự ghi thẳng xuống đĩa, hỗ trợ resume và không chiếm RAM
+        downloadDirectFile(videoUrl, pathData.filename);
+        addHistoryRecord(media, pathData.fullPath, type, 'video');
+        setDownloadProgressText('Đã bắt đầu tải video qua trình duyệt!');
+        setTimeout(() => setDownloadProgressText(''), 3000);
       } else if (type === 'audio') {
         const audioUrl = media.audio?.url || (media.mediaType === 'photos' ? media.video?.noWatermark : '');
         if (!audioUrl) {
@@ -518,38 +449,14 @@ export default function App() {
   };
 
   // Handle direct browser download (Vị trí số 4: hiển thị khi tải thông thường không tải được)
-  const handleDirectDownload = async () => {
+  const handleDirectDownload = () => {
     if (!directDownloadInfo?.url) return;
-    const session = createDownloadSession();
-    downloadSessionRef.current = session;
-    try {
-      setIsDownloading(true);
-      setIsPaused(false);
-      setDownloadProgressText('Đang tải tốc độ cao...');
-      const blob = await streamFetchBlob(directDownloadInfo.url, (p) => setDownloadProgressText(p), 45000, undefined, session);
-      if (session.isCancelled) return;
-      await downloadBlobSafely(blob, directDownloadInfo.filename);
-      if (currentMedia) {
-        addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
-      }
-      setDownloadProgressText('Tải về thành công!');
-    } catch (err: any) {
-      if (err?.name === 'AbortError' || session.isCancelled) {
-        setDownloadProgressText('Đã hủy tải về');
-        setTimeout(() => setDownloadProgressText(''), 2000);
-        return;
-      }
-      // If direct fetch is blocked by CORS, trigger native browser download
-      triggerNativeBrowserDownload(directDownloadInfo.url, directDownloadInfo.filename);
-      if (currentMedia) {
-        addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
-      }
-    } finally {
-      setIsDownloading(false);
-      setIsPaused(false);
-      downloadSessionRef.current = null;
-      setTimeout(() => setDownloadProgressText(''), 2500);
+    downloadDirectFile(directDownloadInfo.url, directDownloadInfo.filename);
+    if (currentMedia) {
+      addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
     }
+    setDownloadProgressText('Đã bắt đầu tải xuống tốc độ cao!');
+    setTimeout(() => setDownloadProgressText(''), 3000);
   };
 
   // Re-download from history
