@@ -23,13 +23,13 @@ const RENDER_RELAY_URL = CLOUDFLARE_WORKER_URL;
 const RENDER_AUTH_TOKEN = CLOUDFLARE_AUTH_TOKEN;
 
 // Wrapper gọi Worker từ Cloudflare Worker Endpoint
-async function fetchFromRenderWorker(rawUrlOrClean: string) {
+async function fetchFromCloudflareWorker(rawUrlOrClean: string) {
   const cleanUrl = extractCleanUrl(rawUrlOrClean) || rawUrlOrClean;
   const workerBase =
     process.env.CLOUDFLARE_WORKER_URL ||
-    process.env.RENDER_WORKER_URL ||
     'https://douyin-resolver.changlucky7777.workers.dev';
-  const authToken = process.env.WORKER_AUTH_TOKEN || RENDER_AUTH_TOKEN;
+  const authToken =
+    process.env.WORKER_AUTH_TOKEN || 'k8dF92mZx2026Secure';
 
   try {
     const res = await fetch(workerBase.replace(/\/$/, ''), {
@@ -44,37 +44,29 @@ async function fetchFromRenderWorker(rawUrlOrClean: string) {
 
     if (res.ok) {
       const json = (await res.json()) as any;
-      // Trích xuất aweme_detail và format về chuẩn app SnapTikDou
-      const awemeDetail = json.aweme_detail || json.data?.aweme_detail || json.data;
-      const awemeId = json.awemeId || extractDouyinId(cleanUrl) || '';
+      
+      // Bóc tách aweme_detail trả về từ Cloudflare Worker
+      const detail = json.aweme_detail || json.data?.aweme_detail || json.data;
+      const awemeId = String(json.awemeId || detail?.aweme_id || extractDouyinId(cleanUrl) || '');
 
-      if (awemeDetail) {
-        return formatDouyinAweme(awemeDetail, cleanUrl, awemeId);
+      if (detail && detail.aweme_id) {
+        return formatDouyinAweme(detail, cleanUrl, awemeId);
       }
       if (json.video?.noWatermark) {
         return json;
       }
+    } else {
+      console.warn('[Cloudflare Worker] Phản hồi mã lỗi:', res.status);
     }
   } catch (err: any) {
-    console.warn('[Worker] Lỗi kết nối:', err?.message || err);
-  }
-
-  // Fallback nếu có awemeId trực tiếp
-  const localAwemeId = extractDouyinId(cleanUrl);
-  if (localAwemeId) {
-    return extractDouyinFromRenderWorker(localAwemeId, cleanUrl);
+    console.warn('[Cloudflare Worker] Lỗi kết nối:', err?.message || err);
   }
 
   return null;
 }
 
-// Helper fallback trích xuất Douyin trực tiếp khi có awemeId
-async function extractDouyinFromRenderWorker(awemeId: string, targetUrl: string) {
-  return extractDouyinNativeApiWarp(awemeId, targetUrl);
-}
-
-// Alias tương thích ngược
-const fetchFromCloudflareWorker = fetchFromRenderWorker;
+// Helper alias tương thích
+const fetchFromRenderWorker = fetchFromCloudflareWorker;
 
 // Standard User-Agents to prevent CDN blocks
 const TIKTOK_USER_AGENT =
@@ -1397,14 +1389,14 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
     if (targetIsDouyin) {
       const cleanUrl = extractCleanUrl(trimmedUrl) || trimmedUrl;
 
-      // 1. Tầng 1: Cloudflare Edge Worker
+      // 1. Tầng 1: Ưu tiên bóc tách qua Cloudflare Edge Worker
       try {
         const cfWorkerData = await fetchFromCloudflareWorker(cleanUrl);
         if (cfWorkerData && (cfWorkerData.video?.noWatermark || cfWorkerData.images?.length > 0)) {
           return res.json({ success: true, data: cfWorkerData });
         }
       } catch (workerErr) {
-        console.warn('Cloudflare Worker không phản hồi:', workerErr);
+        console.warn('Cloudflare Worker failover:', workerErr);
       }
 
       // 2. Thử Tầng Mobile HTML Scrape
