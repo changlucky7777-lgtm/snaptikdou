@@ -631,6 +631,18 @@ export async function streamFetchBlob(
   return blob;
 }
 
+// Nếu là video hoặc tệp dung lượng lớn (> 50MB), kích hoạt tải native của trình duyệt
+export function triggerNativeDownload(downloadUrl: string, filename: string) {
+  const link = document.createElement('a');
+  // Chuyển hướng qua route proxy download của server
+  link.href = `/api/tiktok/download?url=${encodeURIComponent(downloadUrl)}&filename=${encodeURIComponent(filename)}`;
+  link.setAttribute('download', filename);
+  link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 // Trigger reliable browser download for an external media URL without opening media player
 export async function triggerDirectUrlDownload(url: string, filename: string = 'media.mp4') {
   // Fetch via stream proxy with Blob
