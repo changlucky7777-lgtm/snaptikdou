@@ -387,7 +387,7 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
     }
   }
 
-  // Helper to inspect Douyin stream url_list and prioritize direct CDN URLs over the 2-minute capped play redirector
+  // Thuật toán bóc tách luồng CDN nguyên bản (Full Length > 10 phút, không dính giới hạn xem thử)
   const pickBestDouyinStreamUrl = (urlList: string[] | undefined | null): {
     primary: string;
     directCdn: string;
@@ -400,25 +400,27 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
 
     const allUrls: string[] = [];
     let directCdn = '';
+
     for (const u of urlList) {
       if (!u || typeof u !== 'string') continue;
       const trimmed = u.trim();
       if (!trimmed) continue;
       if (!allUrls.includes(trimmed)) allUrls.push(trimmed);
-      // CRITICAL: Direct CDN URLs contain the FULL duration without the 2-minute trial limit enforced by /play/ endpoint
-      if (!directCdn && /douyinvod\.com|zjcdn\.com|byteimg\.com|snssdk\.com\/video\/tos|ixigua\.com/i.test(trimmed)) {
+
+      // CỰC KỲ QUAN TRỌNG: Các domain CDN này chứa TOÀN BỘ video gốc không bị cắt 2 phút
+      if (!directCdn && /douyinvod\.com|zjcdn\.com|byteimg\.com|snssdk\.com\/video\/tos|ixigua\.com|pstatp\.com/i.test(trimmed)) {
         directCdn = trimmed;
       }
     }
 
-    // Sanitized play endpoint (replace playwm with play)
+    // Nếu là link play redirect, tự động loại bỏ playwm sang play
     const rawPlayUrl = urlList.find((u) => u && (u.includes('playwm') || u.includes('/play/'))) || urlList[0] || '';
     const sanitizedPlay = rawPlayUrl ? rawPlayUrl.replace('/playwm/', '/play/').replace(/playwm/g, 'play') : '';
     if (sanitizedPlay && !allUrls.includes(sanitizedPlay)) {
       allUrls.push(sanitizedPlay);
     }
 
-    // If a direct CDN URL exists, it is the most reliable for long videos (> 2 min)
+    // Ưu tiên cao nhất: CDN trực tiếp -> nếu không có mới dùng sanitizedPlay
     const primary = directCdn || sanitizedPlay || urlList[0] || '';
 
     return { primary, directCdn, sanitizedPlay, allUrls };
@@ -1960,35 +1962,33 @@ async function fetchMediaWithRetry(
   };
 
   for (const candidate of candidateUrls) {
-    const isCdnUrl = /douyinvod\.com|zjcdn\.com|byteimg\.com|ixigua\.com|pstatp\.com/i.test(candidate);
+    const isCdnUrl = /douyinvod\.com|zjcdn\.com|byteimg\.com|snssdk\.com|ixigua\.com|pstatp\.com/i.test(candidate);
     const candidateCookie = isCdnUrl ? '' : cookieHeader;
 
-    // Fast-path for direct CDN URLs: Native redirect follow without foreign cookies
+    // Tối ưu tải video lớn: Tắt Referer cho toàn bộ link CDN Douyin
     if (isCdnUrl) {
       try {
         const headers: Record<string, string> = {
-          'User-Agent': userAgent,
+          'User-Agent': DOUYIN_USER_AGENT,
           Accept: '*/*',
         };
         if (options.range) headers['Range'] = options.range;
         const res = await fetchWithConnectTimeout(
           candidate,
           { method: 'GET', headers, redirect: 'follow' },
-          CONNECT_TIMEOUT
+          15000 // Tăng timeout kết nối lên 15 giây cho video dài
         );
         if (isValidMediaResponse(res)) return res;
-      } catch {
-        // continue to multi-strategy fallback
-      }
+      } catch {}
     }
 
     // Strategy 1: Standard GET with Platform Headers (Referer, UA, Cookie, Range) & Deep Redirect Follow
     try {
       const headers: Record<string, string> = {
         'User-Agent': userAgent,
-        Referer: referer,
         Accept: '*/*',
       };
+      if (!isCdnUrl) headers['Referer'] = referer;
       if (candidateCookie) headers['Cookie'] = candidateCookie;
       if (options.range) headers['Range'] = options.range;
       const res = await followAndFetch(candidate, headers, 8);
