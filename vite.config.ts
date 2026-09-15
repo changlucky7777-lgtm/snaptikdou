@@ -73,7 +73,7 @@ export default defineConfig(() => {
       },
     },
     server: {
-      allowedHosts: true, // Cho phép truy cập qua domain riêng snaptikdou.com
+      allowedHosts: true as any, // Cho phép truy cập qua domain riêng snaptikdou.com
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },

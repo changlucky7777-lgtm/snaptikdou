@@ -39,6 +39,60 @@ async function fetchViaRender(targetUrl: string, fetchOptions: any = {}) {
   return result.data;
 }
 
+// Helper trích xuất Douyin trực tiếp thông qua Render Worker (Tầng 1)
+async function extractDouyinFromRenderWorker(awemeId: string, targetUrl: string) {
+  const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
+  const ttwid = await getTtwid().catch(() => '');
+  const data = await fetchViaRender(detailApiUrl, {
+    headers: {
+      'User-Agent': DOUYIN_USER_AGENT,
+      Referer: `https://www.douyin.com/video/${awemeId}`,
+      Accept: 'application/json, text/plain, */*',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      Cookie: ttwid ? `ttwid=${ttwid};` : '',
+    },
+  });
+
+  if (data?.aweme_detail) {
+    return formatDouyinAweme(data.aweme_detail, targetUrl, awemeId);
+  }
+  return null;
+}
+
+// Wrapper gọi Worker từ Render Worker Endpoint trực tiếp hoặc qua relay
+async function fetchFromRenderWorker(rawUrlOrClean: string) {
+  const cleanUrl = extractCleanUrl(rawUrlOrClean) || rawUrlOrClean;
+  let awemeId = extractDouyinId(cleanUrl);
+  if (!awemeId) {
+    const resolved = await resolveFinalUrl(cleanUrl);
+    awemeId = extractDouyinId(resolved);
+  }
+  if (!awemeId) return null;
+
+  const workerBase = process.env.RENDER_WORKER_URL || 'https://douyin-proxy-render.onrender.com';
+  // Nếu worker có endpoint riêng bóc tách trực tiếp
+  try {
+    const res = await fetch(`${workerBase.replace(/\/$/, '')}/api/douyin/extract`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': RENDER_AUTH_TOKEN,
+      },
+      body: JSON.stringify({ url: cleanUrl }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) {
+      const json = await res.json() as any;
+      if (json.data) return json.data;
+      if (json.video?.noWatermark) return json;
+    }
+  } catch {
+    // Fallback sang extractDouyinFromRenderWorker
+  }
+
+  return extractDouyinFromRenderWorker(awemeId, cleanUrl);
+}
+
 // Standard User-Agents to prevent CDN blocks
 const TIKTOK_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -206,16 +260,11 @@ function isTikTokUrl(url: string): boolean {
   return /tiktok\.com/i.test(url);
 }
 
-// Extract clean URL from raw user input text
+// Trích xuất chuẩn xác link URL đầu tiên có trong văn bản (Sanitize Input)
 function extractCleanUrl(rawInput: string): string {
   if (!rawInput || typeof rawInput !== 'string') return '';
-  const trimmed = rawInput.trim();
-  // Match standard http/https URLs up to whitespace, quotes, or chinese punctuation
-  const match = trimmed.match(/https?:\/\/[^\s"'<>\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/i);
-  if (match && match[0]) {
-    return match[0].replace(/[.,;:!?)\]}]+$/, '');
-  }
-  return trimmed;
+  const match = rawInput.match(/https?:\/\/[^\s"'<>\[\]\(\)\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/i);
+  return match ? match[0].replace(/[.,;:!?)\]}]+$/, '').trim() : rawInput.trim();
 }
 
 // Extract Douyin item ID from various URL patterns
@@ -553,6 +602,194 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
     images,
     platform: 'douyin' as const,
   };
+}
+
+// --- TẦNG 2: BÓC TÁCH TỪ MOBILE SHARE HTML (KHÔNG CẦN A_BOGUS) ---
+async function extractDouyinMobileHtml(awemeId: string, originalUrl: string) {
+  const shareUrls = [
+    `https://www.iesdouyin.com/share/video/${awemeId}/`,
+    `https://www.douyin.com/share/video/${awemeId}/`,
+    `https://www.douyin.com/video/${awemeId}`,
+  ];
+
+  for (const sUrl of shareUrls) {
+    try {
+      const res = await fetch(sUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        },
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (!res.ok) continue;
+      const html = await res.text();
+
+      // Bóc tách JSON được nhúng sẵn trong HTML
+      const match =
+        html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/) ||
+        html.match(/_ROUTER_DATA\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/);
+
+      let item: any = null;
+      if (match) {
+        try {
+          const rData = JSON.parse(match[1]);
+          const loader = rData.loaderData || {};
+          const key =
+            Object.keys(loader).find((k) => k.includes('video') || k.includes('note')) ||
+            Object.keys(loader)[0];
+          item = loader[key]?.videoInfoRes?.item_list?.[0];
+        } catch {}
+      }
+
+      if (item && item.aweme_id) {
+        const isPhotos = Array.isArray(item.images) && item.images.length > 0;
+        const images = isPhotos
+          ? item.images.map((img: any) => normalizeMediaUrl(img.url_list?.[0] || img)).filter(Boolean)
+          : [];
+
+        // Chuyển link video sang bản No Watermark
+        const rawVideoList: string[] = item.video?.play_addr?.url_list || [];
+        const noWmList = rawVideoList.map((u: string) =>
+          normalizeMediaUrl(u.replace('/playwm/', '/play/').replace(/playwm/g, 'play'))
+        );
+        const primaryVideo = noWmList[0] || '';
+
+        return {
+          id: String(item.aweme_id),
+          url: originalUrl,
+          title: item.desc || 'Douyin Media',
+          mediaType: (isPhotos ? 'photos' : 'video') as 'photos' | 'video',
+          cover: normalizeMediaUrl(item.video?.cover?.url_list?.[0] || images[0] || ''),
+          duration: item.video?.duration ? Math.round(item.video.duration / 1000) : 0,
+          createdAt: item.create_time ? new Date(item.create_time * 1000).toISOString() : new Date().toISOString(),
+          author: {
+            id: String(item.author?.uid || ''),
+            uniqueId: item.author?.unique_id || item.author?.short_id || 'douyin_user',
+            nickname: item.author?.nickname || 'Douyin Creator',
+            avatar: normalizeMediaUrl(item.author?.avatar_thumb?.url_list?.[0] || ''),
+          },
+          stats: {
+            plays: item.statistics?.play_count || 0,
+            likes: item.statistics?.digg_count || 0,
+            comments: item.statistics?.comment_count || 0,
+            shares: item.statistics?.share_count || 0,
+            downloads: item.statistics?.collect_count || 0,
+          },
+          video: {
+            noWatermark: primaryVideo,
+            hd: noWmList[0] || primaryVideo,
+            watermark: normalizeMediaUrl(rawVideoList[0] || ''),
+            size: item.video?.play_addr?.data_size || 0,
+            hdSize: 0,
+            backupUrls: noWmList.filter(Boolean),
+          },
+          audio: {
+            id: String(item.music?.id || ''),
+            title: item.music?.title || 'Âm thanh Douyin',
+            author: item.music?.author || item.author?.nickname || '',
+            url: normalizeMediaUrl(item.music?.play_url?.url_list?.[0] || ''),
+            duration: item.music?.duration || 0,
+          },
+          images,
+          platform: 'douyin' as const,
+        };
+      }
+    } catch (e: any) {
+      console.warn('Douyin Mobile HTML extractor failed for', sUrl, e?.message || e);
+    }
+  }
+  return null;
+}
+
+// Wrapper trích xuất dữ liệu Douyin đa tầng phục vụ tải và streaming
+async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
+  const cleanUrl = extractCleanUrl(douyinUrl) || douyinUrl;
+  const awemeId = extractDouyinId(cleanUrl) || extractDouyinId(douyinUrl);
+  const targetUrl = originalUrl || cleanUrl;
+
+  // 1. Thử qua Render Worker Singapore
+  if (awemeId) {
+    try {
+      const renderData = await extractDouyinFromRenderWorker(awemeId, targetUrl);
+      if (renderData) return renderData;
+    } catch {}
+  }
+
+  // 2. Thử qua Mobile HTML _ROUTER_DATA
+  if (awemeId) {
+    try {
+      const mobileData = await extractDouyinMobileHtml(awemeId, targetUrl);
+      if (mobileData) return mobileData;
+    } catch {}
+
+    try {
+      const ssrData = await extractDouyinMobileSSR(awemeId, targetUrl);
+      if (ssrData) return ssrData;
+    } catch {}
+  }
+
+  // 3. Fallback TikWM
+  try {
+    const tikwmData = await extractFromTikWM(cleanUrl);
+    if (tikwmData && (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))) {
+      const isPhotos = Array.isArray(tikwmData.images) && tikwmData.images.length > 0;
+      return {
+        id: String(tikwmData.id || awemeId || Date.now()),
+        url: targetUrl,
+        title: tikwmData.title || 'Douyin Media',
+        mediaType: (isPhotos ? 'photos' : 'video') as 'photos' | 'video',
+        cover: normalizeMediaUrl(tikwmData.cover || tikwmData.origin_cover),
+        duration: tikwmData.duration || 0,
+        createdAt: tikwmData.create_time ? new Date(tikwmData.create_time * 1000).toISOString() : new Date().toISOString(),
+        author: {
+          id: String(tikwmData.author?.id || ''),
+          uniqueId: tikwmData.author?.unique_id || 'douyin_user',
+          nickname: tikwmData.author?.nickname || 'Douyin Creator',
+          avatar: normalizeMediaUrl(tikwmData.author?.avatar),
+        },
+        stats: {
+          plays: tikwmData.play_count || 0,
+          likes: tikwmData.digg_count || 0,
+          comments: tikwmData.comment_count || 0,
+          shares: tikwmData.share_count || 0,
+          downloads: tikwmData.download_count || 0,
+        },
+        video: {
+          noWatermark: normalizeMediaUrl(tikwmData.play),
+          hd: normalizeMediaUrl(tikwmData.hdplay || tikwmData.play),
+          watermark: normalizeMediaUrl(tikwmData.wmplay),
+          size: tikwmData.size || 0,
+          hdSize: tikwmData.hd_size || 0,
+          backupUrls: [
+            normalizeMediaUrl(tikwmData.hdplay),
+            normalizeMediaUrl(tikwmData.play),
+            normalizeMediaUrl(tikwmData.wmplay),
+          ].filter(Boolean),
+        },
+        audio: {
+          id: String(tikwmData.music_info?.id || ''),
+          title: tikwmData.music_info?.title || tikwmData.music || 'Âm thanh Douyin',
+          author: tikwmData.music_info?.author || tikwmData.author?.nickname || '',
+          url: normalizeMediaUrl(tikwmData.music || tikwmData.music_info?.play || ''),
+          duration: tikwmData.music_info?.duration || 0,
+        },
+        images: isPhotos ? (tikwmData.images || []).map((img: string) => normalizeMediaUrl(img)) : [],
+        platform: 'douyin' as const,
+      };
+    }
+  } catch {}
+
+  // 4. Native WARP
+  if (awemeId) {
+    try {
+      const warpData = await extractDouyinNativeApiWarp(awemeId, targetUrl);
+      if (warpData) return warpData;
+    } catch {}
+  }
+
+  return null;
 }
 
 // Douyin Extraction Tiers:
@@ -1188,114 +1425,115 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
     const targetIsDouyin = isDouyinUrl(resolvedUrl) || isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
 
     if (targetIsDouyin) {
-      const douyinUrlsToTry = [cleanTargetUrl, trimmedUrl, resolvedUrl].filter(Boolean);
-      const awemeId = extractDouyinId(resolvedUrl) || extractDouyinId(cleanTargetUrl) || extractDouyinId(trimmedUrl);
+      const cleanUrl = extractCleanUrl(trimmedUrl) || trimmedUrl;
 
-      // TẦNG 1 (TikWM Engine): Nhận diện cả link ngắn (v.douyin.com/...) và link chuẩn, bóc tách nhanh trong 0.3s
-      for (const dUrl of douyinUrlsToTry) {
-        try {
-          const tikwmData = await extractFromTikWM(dUrl);
-          if (tikwmData && (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))) {
-            const isPhotoSlide = Array.isArray(tikwmData.images) && tikwmData.images.length > 0;
-            const mediaType = isPhotoSlide ? 'photos' : 'video';
-            const result = {
-              id: String(tikwmData.id || awemeId || Date.now()),
-              url: resolvedUrl || cleanTargetUrl,
-              title: tikwmData.title || 'Douyin Media',
-              mediaType,
-              cover: normalizeMediaUrl(tikwmData.cover || tikwmData.origin_cover),
-              duration: tikwmData.duration || 0,
-              createdAt: tikwmData.create_time ? new Date(tikwmData.create_time * 1000).toISOString() : new Date().toISOString(),
-              author: {
-                id: String(tikwmData.author?.id || ''),
-                uniqueId: tikwmData.author?.unique_id || 'douyin_user',
-                nickname: tikwmData.author?.nickname || 'Douyin Creator',
-                avatar: normalizeMediaUrl(tikwmData.author?.avatar),
-              },
-              stats: {
-                plays: tikwmData.play_count || 0,
-                likes: tikwmData.digg_count || 0,
-                comments: tikwmData.comment_count || 0,
-                shares: tikwmData.share_count || 0,
-                downloads: tikwmData.download_count || 0,
-              },
-              video: {
-                noWatermark: normalizeMediaUrl(tikwmData.play),
-                hd: normalizeMediaUrl(tikwmData.hdplay || tikwmData.play),
-                watermark: normalizeMediaUrl(tikwmData.wmplay),
-                size: tikwmData.size || 0,
-                hdSize: tikwmData.hd_size || 0,
-                backupUrls: [
-                  normalizeMediaUrl(tikwmData.hdplay),
-                  normalizeMediaUrl(tikwmData.play),
-                  normalizeMediaUrl(tikwmData.wmplay),
-                ].filter(Boolean),
-              },
-              audio: {
-                id: String(tikwmData.music_info?.id || ''),
-                title: tikwmData.music_info?.title || tikwmData.music || 'Âm thanh Douyin',
-                author: tikwmData.music_info?.author || tikwmData.author?.nickname || '',
-                url: normalizeMediaUrl(tikwmData.music || tikwmData.music_info?.play || ''),
-                duration: tikwmData.music_info?.duration || 0,
-              },
-              images: isPhotoSlide ? (tikwmData.images || []).map((img: string) => normalizeMediaUrl(img)) : [],
-              platform: 'douyin' as const,
-            };
-            res.json({ success: true, data: result });
-            return;
+      // 1. Thử qua Render Worker (Singapore) trước
+      try {
+        if (process.env.RENDER_WORKER_URL || RENDER_RELAY_URL) {
+          const workerData = await fetchFromRenderWorker(cleanUrl);
+          if (workerData && (workerData.video?.noWatermark || workerData.images?.length > 0)) {
+            return res.json({ success: true, data: workerData });
           }
-        } catch (tikwmErr: any) {
-          // Log and seamlessly failover to Tier 2
-          console.warn('Douyin Tier 1 (TikWM) failed for', dUrl, tikwmErr?.message || tikwmErr);
         }
+      } catch (workerErr) {
+        console.warn('Render Worker không phản hồi (có thể đang Cold Start):', workerErr);
       }
 
-      // TẦNG 2 (Trang chia sẻ Mobile HTML): Trích xuất window._ROUTER_DATA / RENDER_DATA từ trang SSR của ByteDance
-      if (awemeId) {
-        try {
-          const ssrData = await extractDouyinMobileSSR(awemeId, resolvedUrl || cleanTargetUrl);
-          if (ssrData) {
-            res.json({ success: true, data: ssrData });
-            return;
-          }
-        } catch (ssrErr: any) {
-          console.warn('Douyin Tier 2 (Mobile SSR) failed:', ssrErr?.message || ssrErr);
+      // 2. Thử Tầng Mobile HTML Scrape
+      try {
+        let awemeId = extractDouyinId(cleanUrl);
+        if (!awemeId) {
+          const resolved = await resolveFinalUrl(cleanUrl);
+          awemeId = extractDouyinId(resolved);
         }
+        if (awemeId) {
+          const htmlData = await extractDouyinMobileHtml(awemeId, cleanUrl);
+          if (htmlData && (htmlData.video?.noWatermark || htmlData.images?.length > 0)) {
+            return res.json({ success: true, data: htmlData });
+          }
+
+          const ssrData = await extractDouyinMobileSSR(awemeId, cleanUrl);
+          if (ssrData && (ssrData.video?.noWatermark || ssrData.images?.length > 0)) {
+            return res.json({ success: true, data: ssrData });
+          }
+        }
+      } catch (htmlErr) {
+        console.warn('Mobile HTML Scrape thất bại:', htmlErr);
       }
 
-      // TẦNG 3 (Native API qua WARP SOCKS5): Kết nối qua cổng proxy 127.0.0.1:40000 của Cloudflare WARP
-      if (awemeId) {
+      // 3. Cứu cánh Tầng 3: TikWM Engine (Hỗ trợ tốt v.douyin.com)
+      try {
+        const tikwmData = await extractFromTikWM(cleanUrl);
+        if (tikwmData && (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))) {
+          const isPhotoSlide = Array.isArray(tikwmData.images) && tikwmData.images.length > 0;
+          const mediaType = isPhotoSlide ? 'photos' : 'video';
+          const result = {
+            id: String(tikwmData.id || extractDouyinId(cleanUrl) || Date.now()),
+            url: resolvedUrl || cleanUrl,
+            title: tikwmData.title || 'Douyin Media',
+            mediaType,
+            cover: normalizeMediaUrl(tikwmData.cover || tikwmData.origin_cover),
+            duration: tikwmData.duration || 0,
+            createdAt: tikwmData.create_time ? new Date(tikwmData.create_time * 1000).toISOString() : new Date().toISOString(),
+            author: {
+              id: String(tikwmData.author?.id || ''),
+              uniqueId: tikwmData.author?.unique_id || 'douyin_user',
+              nickname: tikwmData.author?.nickname || 'Douyin Creator',
+              avatar: normalizeMediaUrl(tikwmData.author?.avatar),
+            },
+            stats: {
+              plays: tikwmData.play_count || 0,
+              likes: tikwmData.digg_count || 0,
+              comments: tikwmData.comment_count || 0,
+              shares: tikwmData.share_count || 0,
+              downloads: tikwmData.download_count || 0,
+            },
+            video: {
+              noWatermark: normalizeMediaUrl(tikwmData.play),
+              hd: normalizeMediaUrl(tikwmData.hdplay || tikwmData.play),
+              watermark: normalizeMediaUrl(tikwmData.wmplay),
+              size: tikwmData.size || 0,
+              hdSize: tikwmData.hd_size || 0,
+              backupUrls: [
+                normalizeMediaUrl(tikwmData.hdplay),
+                normalizeMediaUrl(tikwmData.play),
+                normalizeMediaUrl(tikwmData.wmplay),
+              ].filter(Boolean),
+            },
+            audio: {
+              id: String(tikwmData.music_info?.id || ''),
+              title: tikwmData.music_info?.title || tikwmData.music || 'Âm thanh Douyin',
+              author: tikwmData.music_info?.author || tikwmData.author?.nickname || '',
+              url: normalizeMediaUrl(tikwmData.music || tikwmData.music_info?.play || ''),
+              duration: tikwmData.music_info?.duration || 0,
+            },
+            images: isPhotoSlide ? (tikwmData.images || []).map((img: string) => normalizeMediaUrl(img)) : [],
+            platform: 'douyin' as const,
+          };
+          return res.json({ success: true, data: result });
+        }
+      } catch (tikwmErr) {
+        console.warn('TikWM fallback thất bại:', tikwmErr);
+      }
+
+      // Tầng cứu hộ phụ trợ: Native WARP API
+      const fallbackAwemeId = extractDouyinId(cleanUrl) || extractDouyinId(resolvedUrl);
+      if (fallbackAwemeId) {
         try {
-          const warpNativeData = await extractDouyinNativeApiWarp(awemeId, resolvedUrl || cleanTargetUrl);
+          const warpNativeData = await extractDouyinNativeApiWarp(fallbackAwemeId, resolvedUrl || cleanUrl);
           if (warpNativeData) {
-            res.json({ success: true, data: warpNativeData });
-            return;
+            return res.json({ success: true, data: warpNativeData });
           }
-        } catch (warpErr: any) {
-          console.warn('Douyin Tier 3 (Native WARP API) failed:', warpErr?.message || warpErr);
+        } catch (warpErr) {
+          console.warn('Douyin Tier 4 (Native WARP API) failed:', warpErr);
         }
       }
 
-      // Fallback Tier 4: Tiklydown backup scraper
-      for (const dUrl of douyinUrlsToTry) {
-        try {
-          const tiklyData = await extractFromTiklydown(dUrl);
-          if (tiklyData) {
-            res.json({ success: true, data: { ...tiklyData, platform: 'douyin' as const } });
-            return;
-          }
-        } catch {
-          // try next
-        }
-      }
-
-      const errMsg = 'Không thể trích xuất dữ liệu từ video/bài viết Douyin. Vui lòng kiểm tra lại liên kết hoặc thử lại sau vài giây.';
-      res.status(422).json({
+      // Nếu cả các tầng đều không lấy được
+      return res.status(422).json({
         success: false,
-        error: errMsg,
-        message: errMsg,
+        message: 'Không thể trích xuất dữ liệu từ video/bài viết Douyin. Vui lòng kiểm tra lại liên kết hoặc thử lại sau vài giây.',
       });
-      return;
     }
 
     // TikTok extraction pipeline:
