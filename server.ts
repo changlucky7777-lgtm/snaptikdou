@@ -6,7 +6,6 @@ import { pipeline } from 'stream/promises';
 import { createServer as createViteServer } from 'vite';
 import JSZip from 'jszip';
 import { SocksProxyAgent } from 'socks-proxy-agent';
-import nodeFetch, { Response as NodeFetchResponse } from 'node-fetch';
 
 const app = express();
 const PORT = 3000;
@@ -142,8 +141,9 @@ async function smartFetch(url: string, options: SmartFetchOptions = {}): Promise
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeout);
-      const res = await (nodeFetch as any)(url, {
+      const res = await (fetch as any)(url, {
         ...fetchOpts,
+        dispatcher: warpAgent,
         agent: warpAgent,
         signal: controller.signal,
       });
@@ -158,7 +158,7 @@ async function smartFetch(url: string, options: SmartFetchOptions = {}): Promise
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const res = await (nodeFetch as any)(url, {
+    const res = await (fetch as any)(url, {
       ...fetchOpts,
       signal: controller.signal,
     });
@@ -1660,8 +1660,9 @@ async function fetchWithConnectTimeout(
   // Try WARP Proxy Agent first if available
   if (warpAgent) {
     try {
-      const res = await (nodeFetch as any)(url, {
+      const res = await (fetch as any)(url, {
         ...fetchOptions,
+        dispatcher: warpAgent,
         agent: warpAgent,
       });
       clearTimeout(timer);
@@ -1672,7 +1673,7 @@ async function fetchWithConnectTimeout(
   }
 
   try {
-    const res = await (nodeFetch as any)(url, fetchOptions);
+    const res = await (fetch as any)(url, fetchOptions);
     clearTimeout(timer);
     return res;
   } catch (err) {
