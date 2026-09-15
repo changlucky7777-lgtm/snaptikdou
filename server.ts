@@ -25,8 +25,11 @@ const RENDER_AUTH_TOKEN = CLOUDFLARE_AUTH_TOKEN;
 // Wrapper gọi Worker từ Cloudflare Worker Endpoint
 async function fetchFromCloudflareWorker(rawUrlOrClean: string) {
   const cleanUrl = extractCleanUrl(rawUrlOrClean) || rawUrlOrClean;
-  const workerBase = 'https://douyin-resolver.changlucky7777.workers.dev';
-  const authToken = 'k8dF92mZx2026Secure';
+  const workerBase =
+    process.env.CLOUDFLARE_WORKER_URL ||
+    'https://douyin-resolver.changlucky7777.workers.dev';
+  const authToken =
+    process.env.WORKER_AUTH_TOKEN || 'k8dF92mZx2026Secure';
 
   try {
     const res = await fetch(workerBase.replace(/\/$/, ''), {
@@ -44,9 +47,16 @@ async function fetchFromCloudflareWorker(rawUrlOrClean: string) {
       const detail = json.aweme_detail || json.data?.aweme_detail || json.data;
       const awemeId = String(json.awemeId || detail?.aweme_id || extractDouyinId(cleanUrl) || '');
 
-      if (detail && detail.aweme_id) {
+      // Nhận diện linh hoạt: Chỉ cần có detail và có dữ liệu media/id
+      if (detail && (detail.aweme_id || detail.video || detail.images || awemeId)) {
         return formatDouyinAweme(detail, cleanUrl, awemeId);
       }
+
+      if (json.video?.noWatermark) {
+        return json;
+      }
+    } else {
+      console.warn('[Cloudflare Worker Status Error]:', res.status);
     }
   } catch (err: any) {
     console.warn('[Cloudflare Worker Fetch Error]:', err?.message || err);
