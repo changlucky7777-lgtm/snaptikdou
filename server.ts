@@ -122,9 +122,7 @@ async function smartFetch(url: string, options: SmartFetchOptions = {}): Promise
       });
       clearTimeout(timer);
       return new SmartResponse(res, url);
-    } catch {
-      // Direct Fetch fallback
-    }
+    } catch {}
   }
 
   const controller = new AbortController();
@@ -175,16 +173,14 @@ function isTikTokUrl(url: string): boolean {
   return /tiktok\.com/i.test(url);
 }
 
+// Bóc tách URL chuẩn xác khỏi chuỗi share tiếng Trung
 function extractCleanUrl(rawInput: string): string {
   if (!rawInput || typeof rawInput !== 'string') return '';
-  const normalized = rawInput.replace(
-    /[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000\ufeff]/g,
-    ' '
-  );
-  const match = normalized.match(
-    /https?:\/\/[^\s"'<>\[\]\(\)\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/i
-  );
-  return match ? match[0].replace(/[.,;:!?)\]}]+$/, '').trim() : rawInput.trim();
+  const match = rawInput.match(/https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/i);
+  if (match) {
+    return match[0].replace(/[.,;:!?)\]}\u3000-\u303f\uff00-\uffef]+$/, '').trim();
+  }
+  return rawInput.trim();
 }
 
 function extractDouyinId(urlOrText: string): string | null {
@@ -251,9 +247,7 @@ async function getTtwid(): Promise<string> {
       cachedTtwidTime = Date.now();
       return cachedTtwid;
     }
-  } catch (err) {
-    console.warn('Ttwid registration fallback');
-  }
+  } catch {}
   return cachedTtwid;
 }
 
@@ -264,6 +258,8 @@ async function resolveFinalUrl(rawUrl: string): Promise<string> {
   }
   const isDouyin = isDouyinUrl(currentUrl);
   const ttwid = isDouyin ? await getTtwid() : '';
+
+  console.log(`[RESOLVE] Bắt đầu giải mã shortlink: ${currentUrl}`);
 
   for (let i = 0; i < 8; i++) {
     try {
@@ -279,10 +275,11 @@ async function resolveFinalUrl(rawUrl: string): Promise<string> {
         method: 'GET',
         redirect: 'manual',
         headers,
-        timeout: 5000,
+        timeout: 6000,
         useProxy: true,
       });
       const location = res.headers.get('location');
+      console.log(`[RESOLVE Hop ${i + 1}] Status: ${res.status}, Location: ${location || 'none'}`);
       if (location && res.status >= 300 && res.status < 400) {
         if (location.startsWith('http')) {
           currentUrl = location;
@@ -290,12 +287,14 @@ async function resolveFinalUrl(rawUrl: string): Promise<string> {
           currentUrl = new URL(location, currentUrl).toString();
         }
         if (extractDouyinId(currentUrl) || extractTikTokId(currentUrl)) {
+          console.log(`[RESOLVE Thành công] Tìm thấy ID trong URL: ${currentUrl}`);
           return currentUrl;
         }
       } else {
         return res.url || currentUrl;
       }
-    } catch {
+    } catch (e: any) {
+      console.warn(`[RESOLVE Lỗi]: ${e?.message || e}`);
       break;
     }
   }
@@ -312,7 +311,7 @@ async function fetchFromCloudflareWorker(rawUrlOrClean: string) {
         'x-auth-token': CLOUDFLARE_AUTH_TOKEN,
       },
       body: JSON.stringify({ url: cleanUrl }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(4500),
     });
     if (res.ok) {
       const json = (await res.json()) as any;
@@ -699,6 +698,8 @@ async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: string) {
 
 async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
   const cleanUrl = extractCleanUrl(douyinUrl) || douyinUrl;
+  console.log(`[DOUYIN] Bắt đầu xử lý link: ${cleanUrl}`);
+
   let awemeId = extractDouyinId(cleanUrl) || extractDouyinId(douyinUrl);
   const targetUrl = originalUrl || cleanUrl;
 
@@ -707,35 +708,47 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
     awemeId = extractDouyinId(resolved);
   }
 
+  console.log(`[DOUYIN] Aweme ID nhận diện: ${awemeId || 'Chưa tìm thấy'}`);
+
   // 1. Thử Cloudflare Worker Edge (Timeout 4s)
   try {
+    console.log('[DOUYIN] Đang thử Tầng 1 (Worker Edge)...');
     const cfPromise = fetchFromCloudflareWorker(cleanUrl);
     const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 4000));
     const cfData = (await Promise.race([cfPromise, timeoutPromise])) as any;
     if (cfData && (cfData.video?.noWatermark || cfData.images?.length > 0)) {
+      console.log('[DOUYIN Thành công] Tầng 1 (Worker) đã giải mã thành công!');
       return cfData;
     }
-  } catch {}
+  } catch (e: any) {
+    console.warn(`[DOUYIN] Tầng 1 thất bại: ${e?.message}`);
+  }
 
   // 2. Tầng WARP Native API & Mobile HTML/SSR
   if (awemeId) {
     try {
+      console.log('[DOUYIN] Đang thử Tầng 2.1 (WARP Native API)...');
       const warpData = await extractDouyinNativeApiWarp(awemeId, targetUrl);
       if (warpData && (warpData.video?.noWatermark || warpData.images?.length > 0)) {
+        console.log('[DOUYIN Thành công] Tầng 2.1 (WARP Native API) đã giải mã!');
         return warpData;
       }
     } catch {}
 
     try {
+      console.log('[DOUYIN] Đang thử Tầng 2.2 (WARP Mobile HTML)...');
       const mobileData = await extractDouyinMobileHtml(awemeId, targetUrl);
       if (mobileData && (mobileData.video?.noWatermark || mobileData.images?.length > 0)) {
+        console.log('[DOUYIN Thành công] Tầng 2.2 (WARP Mobile HTML) đã giải mã!');
         return mobileData;
       }
     } catch {}
 
     try {
+      console.log('[DOUYIN] Đang thử Tầng 2.3 (WARP Mobile SSR)...');
       const ssrData = await extractDouyinMobileSSR(awemeId, targetUrl);
       if (ssrData && (ssrData.video?.noWatermark || ssrData.images?.length > 0)) {
+        console.log('[DOUYIN Thành công] Tầng 2.3 (WARP Mobile SSR) đã giải mã!');
         return ssrData;
       }
     } catch {}
@@ -743,11 +756,13 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
 
   // 3. Fallback TikWM (Chỉ dùng www.tikwm.com)
   try {
+    console.log('[DOUYIN] Đang thử Tầng 3 (TikWM Fallback)...');
     const tikwmData = await extractFromTikWM(cleanUrl);
     if (
       tikwmData &&
       (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))
     ) {
+      console.log('[DOUYIN Thành công] Tầng 3 (TikWM) đã giải mã!');
       const isPhotos = Array.isArray(tikwmData.images) && tikwmData.images.length > 0;
       return {
         id: String(tikwmData.id || awemeId || Date.now()),
@@ -795,8 +810,11 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
         platform: 'douyin' as const,
       };
     }
-  } catch {}
+  } catch (e: any) {
+    console.warn(`[DOUYIN] Tầng 3 TikWM lỗi: ${e?.message}`);
+  }
 
+  console.error('[DOUYIN Thất bại toàn bộ] Tất cả các tầng cào đều không lấy được dữ liệu.');
   return null;
 }
 
@@ -912,7 +930,6 @@ async function extractFromSSSTik(targetUrl: string) {
   return null;
 }
 
-// TikWM chỉ dùng www.tikwm.com để tránh lỗi ENOTFOUND
 async function extractFromTikWM(targetUrl: string) {
   let cleanUrl = targetUrl;
   try {
@@ -975,6 +992,9 @@ async function extractFromTikWM(targetUrl: string) {
 app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
   try {
     const { url } = req.body;
+    console.log(`\n==============================================`);
+    console.log(`[EXTRACT REQUEST] Nhận link từ giao diện: "${url}"`);
+
     if (!url || typeof url !== 'string') {
       res
         .status(400)
@@ -983,6 +1003,8 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
     }
     const trimmedUrl = url.trim();
     const cleanTargetUrl = extractCleanUrl(trimmedUrl);
+    console.log(`[EXTRACT CLEAN URL]: "${cleanTargetUrl}"`);
+
     const isDouyin = isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
     const isTikTok = isTikTokUrl(cleanTargetUrl) || isTikTokUrl(trimmedUrl);
 
@@ -990,6 +1012,7 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
       const hasDouyin = /douyin\.com|iesdouyin\.com/.test(trimmedUrl);
       const hasTikTok = /tiktok\.com/.test(trimmedUrl);
       if (!hasDouyin && !hasTikTok) {
+        console.warn('[EXTRACT] URL không thuộc TikTok hoặc Douyin!');
         res.status(400).json({
           success: false,
           message: 'URL không thuộc TikTok hoặc Douyin. Vui lòng kiểm tra lại liên kết.',
@@ -1005,8 +1028,10 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
     if (targetIsDouyin) {
       const douyinData = await extractFromDouyin(cleanTargetUrl || trimmedUrl, resolvedUrl);
       if (douyinData && (douyinData.video?.noWatermark || douyinData.images?.length > 0)) {
+        console.log(`[EXTRACT THÀNH CÔNG] Đã trả dữ liệu Douyin về client!`);
         return res.json({ success: true, data: douyinData });
       }
+      console.error(`[EXTRACT THẤT BẠI] Không bóc tách được bài viết Douyin!`);
       return res.status(422).json({
         success: false,
         message:
