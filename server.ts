@@ -584,33 +584,30 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
   };
 }
 
-// --- TẦNG 2: BÓC TÁCH TỪ MOBILE SHARE HTML (KHÔNG CẦN A_BOGUS) ---
+// --- TẦNG 2: BÓC TÁCH TỪ MOBILE SHARE HTML (ĐI QUA CLOUDFLARE WARP) ---
 async function extractDouyinMobileHtml(awemeId: string, originalUrl: string) {
   const shareUrls = [
     `https://www.iesdouyin.com/share/video/${awemeId}/`,
     `https://www.douyin.com/share/video/${awemeId}/`,
     `https://www.douyin.com/video/${awemeId}`,
   ];
-
+  const ttwid = await getTtwid();
   for (const sUrl of shareUrls) {
     try {
-      const res = await fetch(sUrl, {
+      const res = await smartFetch(sUrl, {
         headers: {
-          'User-Agent':
-            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+          'User-Agent': DOUYIN_MOBILE_USER_AGENT,
           'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          Cookie: ttwid ? `ttwid=${ttwid};` : '',
         },
-        signal: AbortSignal.timeout(6000),
+        timeout: 5000,
+        useProxy: true,
       });
-
       if (!res.ok) continue;
       const html = await res.text();
-
-      // Bóc tách JSON được nhúng sẵn trong HTML
       const match =
         html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/) ||
         html.match(/_ROUTER_DATA\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/);
-
       let item: any = null;
       if (match) {
         try {
@@ -622,59 +619,8 @@ async function extractDouyinMobileHtml(awemeId: string, originalUrl: string) {
           item = loader[key]?.videoInfoRes?.item_list?.[0];
         } catch {}
       }
-
       if (item && item.aweme_id) {
-        const isPhotos = Array.isArray(item.images) && item.images.length > 0;
-        const images = isPhotos
-          ? item.images.map((img: any) => normalizeMediaUrl(img.url_list?.[0] || img)).filter(Boolean)
-          : [];
-
-        // Chuyển link video sang bản No Watermark
-        const rawVideoList: string[] = item.video?.play_addr?.url_list || [];
-        const noWmList = rawVideoList.map((u: string) =>
-          normalizeMediaUrl(u.replace('/playwm/', '/play/').replace(/playwm/g, 'play'))
-        );
-        const primaryVideo = noWmList[0] || '';
-
-        return {
-          id: String(item.aweme_id),
-          url: originalUrl,
-          title: item.desc || 'Douyin Media',
-          mediaType: (isPhotos ? 'photos' : 'video') as 'photos' | 'video',
-          cover: normalizeMediaUrl(item.video?.cover?.url_list?.[0] || images[0] || ''),
-          duration: item.video?.duration ? Math.round(item.video.duration / 1000) : 0,
-          createdAt: item.create_time ? new Date(item.create_time * 1000).toISOString() : new Date().toISOString(),
-          author: {
-            id: String(item.author?.uid || ''),
-            uniqueId: item.author?.unique_id || item.author?.short_id || 'douyin_user',
-            nickname: item.author?.nickname || 'Douyin Creator',
-            avatar: normalizeMediaUrl(item.author?.avatar_thumb?.url_list?.[0] || ''),
-          },
-          stats: {
-            plays: item.statistics?.play_count || 0,
-            likes: item.statistics?.digg_count || 0,
-            comments: item.statistics?.comment_count || 0,
-            shares: item.statistics?.share_count || 0,
-            downloads: item.statistics?.collect_count || 0,
-          },
-          video: {
-            noWatermark: primaryVideo,
-            hd: noWmList[0] || primaryVideo,
-            watermark: normalizeMediaUrl(rawVideoList[0] || ''),
-            size: item.video?.play_addr?.data_size || 0,
-            hdSize: 0,
-            backupUrls: noWmList.filter(Boolean),
-          },
-          audio: {
-            id: String(item.music?.id || ''),
-            title: item.music?.title || 'Âm thanh Douyin',
-            author: item.music?.author || item.author?.nickname || '',
-            url: normalizeMediaUrl(item.music?.play_url?.url_list?.[0] || ''),
-            duration: item.music?.duration || 0,
-          },
-          images,
-          platform: 'douyin' as const,
-        };
+        return formatDouyinAweme(item, originalUrl, String(item.aweme_id));
       }
     } catch (e: any) {
       console.warn('Douyin Mobile HTML extractor failed for', sUrl, e?.message || e);
@@ -683,32 +629,53 @@ async function extractDouyinMobileHtml(awemeId: string, originalUrl: string) {
   return null;
 }
 
-// Wrapper trích xuất dữ liệu Douyin đa tầng phục vụ tải và streaming
+// Wrapper trích xuất dữ liệu Douyin đa tầng với cơ chế Fast-Failover
 async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
   const cleanUrl = extractCleanUrl(douyinUrl) || douyinUrl;
-  const awemeId = extractDouyinId(cleanUrl) || extractDouyinId(douyinUrl);
+  let awemeId = extractDouyinId(cleanUrl) || extractDouyinId(douyinUrl);
   const targetUrl = originalUrl || cleanUrl;
 
-  // 1. Ưu tiên qua Cloudflare Worker Edge (Giải quyết triệt để rào cản IP châu Á)
+  // Nếu chưa có awemeId, dùng resolveFinalUrl chạy qua WARP để lấy ID thực tế
+  if (!awemeId) {
+    const resolved = await resolveFinalUrl(cleanUrl);
+    awemeId = extractDouyinId(resolved);
+  }
+
+  // 1. Thử Cloudflare Worker Edge với timeout rút ngắn còn 5 giây (tránh treo giao diện)
   try {
-    const cfData = await fetchFromCloudflareWorker(cleanUrl);
-    if (cfData) return cfData;
+    const cfPromise = fetchFromCloudflareWorker(cleanUrl);
+    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 5000));
+    const cfData = await Promise.race([cfPromise, timeoutPromise]) as any;
+    if (cfData && (cfData.video?.noWatermark || cfData.images?.length > 0)) {
+      return cfData;
+    }
   } catch {}
 
-  // 2. Thử qua Mobile HTML _ROUTER_DATA (Fallback)
+  // 2. Tầng WARP Native API & Mobile HTML/SSR (IP sạch từ Cloudflare WARP 127.0.0.1:40000)
   if (awemeId) {
     try {
+      const warpData = await extractDouyinNativeApiWarp(awemeId, targetUrl);
+      if (warpData && (warpData.video?.noWatermark || warpData.images?.length > 0)) {
+        return warpData;
+      }
+    } catch {}
+
+    try {
       const mobileData = await extractDouyinMobileHtml(awemeId, targetUrl);
-      if (mobileData) return mobileData;
+      if (mobileData && (mobileData.video?.noWatermark || mobileData.images?.length > 0)) {
+        return mobileData;
+      }
     } catch {}
 
     try {
       const ssrData = await extractDouyinMobileSSR(awemeId, targetUrl);
-      if (ssrData) return ssrData;
+      if (ssrData && (ssrData.video?.noWatermark || ssrData.images?.length > 0)) {
+        return ssrData;
+      }
     } catch {}
   }
 
-  // 3. Fallback TikWM
+  // 3. Fallback TikWM (Dự phòng cuối cùng)
   try {
     const tikwmData = await extractFromTikWM(cleanUrl);
     if (tikwmData && (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))) {
@@ -758,14 +725,6 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
       };
     }
   } catch {}
-
-  // 4. Native WARP
-  if (awemeId) {
-    try {
-      const warpData = await extractDouyinNativeApiWarp(awemeId, targetUrl);
-      if (warpData) return warpData;
-    } catch {}
-  }
 
   return null;
 }
