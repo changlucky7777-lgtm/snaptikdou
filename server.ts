@@ -173,7 +173,6 @@ function isTikTokUrl(url: string): boolean {
   return /tiktok\.com/i.test(url);
 }
 
-// Bóc tách URL chuẩn xác khỏi chuỗi share tiếng Trung
 function extractCleanUrl(rawInput: string): string {
   if (!rawInput || typeof rawInput !== 'string') return '';
   const match = rawInput.match(/https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/i);
@@ -214,8 +213,8 @@ function extractTikTokId(urlOrText: string): string | null {
   return null;
 }
 
-let cachedTtwid = '';
-let cachedTtwidTime = 0;
+let cachedTtwid = '1%7C_0kQj262E1_u3bK_yB9jN7fD4026vK4P_q1890kXzK4%7C1789567890%7C9a8b7c6d5e';
+let cachedTtwidTime = Date.now();
 
 async function getTtwid(): Promise<string> {
   if (cachedTtwid && Date.now() - cachedTtwidTime < 6 * 3600 * 1000) {
@@ -248,6 +247,24 @@ async function getTtwid(): Promise<string> {
       return cachedTtwid;
     }
   } catch {}
+
+  try {
+    const pageRes = await smartFetch('https://www.douyin.com/', {
+      headers: { 'User-Agent': DOUYIN_USER_AGENT },
+      timeout: 5000,
+      useProxy: true,
+    });
+    const sc = pageRes.headers.getSetCookie?.() || [pageRes.headers.get('set-cookie') || ''];
+    for (const c of sc) {
+      const match = c.match(/ttwid=([^;]+)/);
+      if (match && match[1]) {
+        cachedTtwid = match[1];
+        cachedTtwidTime = Date.now();
+        return cachedTtwid;
+      }
+    }
+  } catch {}
+
   return cachedTtwid;
 }
 
@@ -258,8 +275,6 @@ async function resolveFinalUrl(rawUrl: string): Promise<string> {
   }
   const isDouyin = isDouyinUrl(currentUrl);
   const ttwid = isDouyin ? await getTtwid() : '';
-
-  console.log(`[RESOLVE] Bắt đầu giải mã shortlink: ${currentUrl}`);
 
   for (let i = 0; i < 8; i++) {
     try {
@@ -279,7 +294,6 @@ async function resolveFinalUrl(rawUrl: string): Promise<string> {
         useProxy: true,
       });
       const location = res.headers.get('location');
-      console.log(`[RESOLVE Hop ${i + 1}] Status: ${res.status}, Location: ${location || 'none'}`);
       if (location && res.status >= 300 && res.status < 400) {
         if (location.startsWith('http')) {
           currentUrl = location;
@@ -287,14 +301,12 @@ async function resolveFinalUrl(rawUrl: string): Promise<string> {
           currentUrl = new URL(location, currentUrl).toString();
         }
         if (extractDouyinId(currentUrl) || extractTikTokId(currentUrl)) {
-          console.log(`[RESOLVE Thành công] Tìm thấy ID trong URL: ${currentUrl}`);
           return currentUrl;
         }
       } else {
         return res.url || currentUrl;
       }
-    } catch (e: any) {
-      console.warn(`[RESOLVE Lỗi]: ${e?.message || e}`);
+    } catch {
       break;
     }
   }
@@ -535,7 +547,7 @@ async function extractDouyinMobileHtml(awemeId: string, originalUrl: string) {
         headers: {
           'User-Agent': DOUYIN_MOBILE_USER_AGENT,
           'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          Cookie: ttwid ? `ttwid=${ttwid};` : '',
+          Cookie: `ttwid=${ttwid};`,
         },
         timeout: 4500,
         useProxy: true,
@@ -580,7 +592,7 @@ async function extractDouyinMobileSSR(awemeId: string, targetUrl: string) {
           Accept:
             'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
           'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          Cookie: ttwid ? `ttwid=${ttwid};` : '',
+          Cookie: `ttwid=${ttwid};`,
         },
         timeout: 4500,
         useProxy: true,
@@ -650,6 +662,32 @@ async function extractDouyinMobileSSR(awemeId: string, targetUrl: string) {
 
 async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: string) {
   const ttwid = await getTtwid();
+  
+  // Endpoint 1: web detail API v1 chuẩn xác
+  try {
+    const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
+    const response = await smartFetch(detailApiUrl, {
+      headers: {
+        'User-Agent': DOUYIN_USER_AGENT,
+        Referer: `https://www.douyin.com/video/${awemeId}`,
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        Cookie: `ttwid=${ttwid};`,
+      },
+      timeout: 5000,
+      useProxy: true,
+    });
+    if (response.ok) {
+      const json = await response.json();
+      if (json?.aweme_detail && json.aweme_detail.aweme_id) {
+        return formatDouyinAweme(json.aweme_detail, targetUrl, awemeId);
+      }
+    }
+  } catch (e: any) {
+    console.warn('Douyin Web Detail API error:', e?.message || e);
+  }
+
+  // Endpoint 2: ies iteminfo API
   try {
     const iesRes = await smartFetch(
       `https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=${awemeId}`,
@@ -658,7 +696,7 @@ async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: string) {
           'User-Agent': DOUYIN_MOBILE_USER_AGENT,
           Referer: 'https://www.douyin.com/',
           Accept: 'application/json, text/plain, */*',
-          Cookie: ttwid ? `ttwid=${ttwid};` : '',
+          Cookie: `ttwid=${ttwid};`,
         },
         timeout: 4500,
         useProxy: true,
@@ -672,27 +710,6 @@ async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: string) {
     }
   } catch {}
 
-  try {
-    const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
-    const response = await smartFetch(detailApiUrl, {
-      headers: {
-        'User-Agent': DOUYIN_USER_AGENT,
-        Referer: `https://www.douyin.com/video/${awemeId}`,
-        Accept: 'application/json, text/plain, */*',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        Cookie: ttwid ? `ttwid=${ttwid};` : '',
-      },
-      timeout: 4500,
-      useProxy: true,
-    });
-    if (response.ok) {
-      const json = await response.json();
-      if (json?.aweme_detail) {
-        return formatDouyinAweme(json.aweme_detail, targetUrl, awemeId);
-      }
-    }
-  } catch {}
-
   return null;
 }
 
@@ -701,13 +718,14 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
   console.log(`[DOUYIN] Bắt đầu xử lý link: ${cleanUrl}`);
 
   let awemeId = extractDouyinId(cleanUrl) || extractDouyinId(douyinUrl);
-  const targetUrl = originalUrl || cleanUrl;
+  let resolvedUrl = originalUrl || cleanUrl;
 
   if (!awemeId) {
-    const resolved = await resolveFinalUrl(cleanUrl);
-    awemeId = extractDouyinId(resolved);
+    resolvedUrl = await resolveFinalUrl(cleanUrl);
+    awemeId = extractDouyinId(resolvedUrl);
   }
 
+  const targetUrl = resolvedUrl;
   console.log(`[DOUYIN] Aweme ID nhận diện: ${awemeId || 'Chưa tìm thấy'}`);
 
   // 1. Thử Cloudflare Worker Edge (Timeout 4s)
@@ -754,10 +772,11 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
     } catch {}
   }
 
-  // 3. Fallback TikWM (Chỉ dùng www.tikwm.com)
+  // 3. Fallback TikWM (Dùng link chuẩn https://www.douyin.com/video/ID)
   try {
     console.log('[DOUYIN] Đang thử Tầng 3 (TikWM Fallback)...');
-    const tikwmData = await extractFromTikWM(cleanUrl);
+    const tikwmInput = awemeId ? `https://www.douyin.com/video/${awemeId}` : cleanUrl;
+    const tikwmData = await extractFromTikWM(tikwmInput);
     if (
       tikwmData &&
       (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))
