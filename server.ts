@@ -9,66 +9,16 @@ import JSZip from 'jszip';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// --- CẤU HÌNH TRẠM TRUNG CHUYỂN CLOUDFLARE EDGE CHO DOUYIN ---
 const CLOUDFLARE_WORKER_URL =
   process.env.CLOUDFLARE_WORKER_URL || 'https://douyin-resolver.changlucky7777.workers.dev';
 const CLOUDFLARE_AUTH_TOKEN =
   process.env.WORKER_AUTH_TOKEN || 'k8dF92mZx2026Secure';
-const RENDER_RELAY_URL = CLOUDFLARE_WORKER_URL;
-const RENDER_AUTH_TOKEN = CLOUDFLARE_AUTH_TOKEN;
 
-// Wrapper gọi Worker từ Cloudflare Worker Endpoint
-async function fetchFromCloudflareWorker(rawUrlOrClean: string) {
-  const cleanUrl = extractCleanUrl(rawUrlOrClean) || rawUrlOrClean;
-  const workerBase =
-    process.env.CLOUDFLARE_WORKER_URL ||
-    'https://douyin-resolver.changlucky7777.workers.dev';
-  const authToken =
-    process.env.WORKER_AUTH_TOKEN || 'k8dF92mZx2026Secure';
-
-  try {
-    const res = await fetch(workerBase.replace(/\/$/, ''), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-auth-token': authToken,
-      },
-      body: JSON.stringify({ url: cleanUrl }),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (res.ok) {
-      const json = (await res.json()) as any;
-      const detail = json.aweme_detail || json.data?.aweme_detail || json.data;
-      const awemeId = String(json.awemeId || detail?.aweme_id || extractDouyinId(cleanUrl) || '');
-
-      // Nhận diện linh hoạt: Chỉ cần có detail và có dữ liệu media/id
-      if (detail && (detail.aweme_id || detail.video || detail.images || awemeId)) {
-        return formatDouyinAweme(detail, cleanUrl, awemeId);
-      }
-
-      if (json.video?.noWatermark) {
-        return json;
-      }
-    } else {
-      console.warn('[Cloudflare Worker Status Error]:', res.status);
-    }
-  } catch (err: any) {
-    console.warn('[Cloudflare Worker Fetch Error]:', err?.message || err);
-  }
-
-  return null;
-}
-
-// Helper alias tương thích
-const fetchFromRenderWorker = fetchFromCloudflareWorker;
-
-// Standard User-Agents to prevent CDN blocks
 const TIKTOK_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const DOUYIN_USER_AGENT =
@@ -78,12 +28,11 @@ const DOUYIN_MOBILE_USER_AGENT =
 const TIKTOK_MOBILE_USER_AGENT =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1';
 
-// Cloudflare WARP SOCKS5 Proxy Configuration
 const WARP_SOCKS_URL = process.env.WARP_PROXY || 'socks5h://127.0.0.1:40000';
 let warpAgent: SocksProxyAgent | null = null;
 try {
   warpAgent = new SocksProxyAgent(WARP_SOCKS_URL);
-} catch (e) {
+} catch {
   warpAgent = null;
 }
 
@@ -97,7 +46,6 @@ interface SmartFetchOptions {
   useProxy?: boolean;
 }
 
-// Normalized Smart Response Object
 class SmartResponse {
   ok: boolean;
   status: number;
@@ -129,7 +77,10 @@ class SmartResponse {
         if (typeof rawHeaders?.raw === 'function') {
           return rawHeaders.raw()['set-cookie'] || [];
         }
-        const single = typeof rawHeaders?.get === 'function' ? rawHeaders.get('set-cookie') : rawHeaders?.['set-cookie'];
+        const single =
+          typeof rawHeaders?.get === 'function'
+            ? rawHeaders.get('set-cookie')
+            : rawHeaders?.['set-cookie'];
         return single ? [single] : [];
       },
     };
@@ -156,11 +107,9 @@ class SmartResponse {
   }
 }
 
-// Multi-Tier Fetcher: Try Cloudflare WARP SOCKS5 first, then Direct Node fetch
 async function smartFetch(url: string, options: SmartFetchOptions = {}): Promise<SmartResponse> {
   const { useProxy = true, timeout = 10000, ...fetchOpts } = options;
 
-  // Tier 1: Try via WARP SOCKS5 Agent if available
   if (useProxy && warpAgent) {
     try {
       const controller = new AbortController();
@@ -174,11 +123,10 @@ async function smartFetch(url: string, options: SmartFetchOptions = {}): Promise
       clearTimeout(timer);
       return new SmartResponse(res, url);
     } catch {
-      // If WARP proxy is unavailable or rejected, proceed immediately to Direct Fetch
+      // Direct Fetch fallback
     }
   }
 
-  // Tier 2: Direct Fetch
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
@@ -194,8 +142,10 @@ async function smartFetch(url: string, options: SmartFetchOptions = {}): Promise
   }
 }
 
-// Helper to normalize relative or protocol-relative media URLs
-function normalizeMediaUrl(url: string | undefined | null, defaultDomain = 'https://www.tikwm.com'): string {
+function normalizeMediaUrl(
+  url: string | undefined | null,
+  defaultDomain = 'https://www.tikwm.com'
+): string {
   if (!url || typeof url !== 'string') return '';
   const trimmed = url.trim();
   if (!trimmed) return '';
@@ -203,30 +153,20 @@ function normalizeMediaUrl(url: string | undefined | null, defaultDomain = 'http
     return 'https:' + trimmed;
   }
   if (trimmed.startsWith('/')) {
-    const isDouyin = trimmed.includes('aweme') || trimmed.includes('douyin') || defaultDomain.includes('douyin');
+    const isDouyin =
+      trimmed.includes('aweme') || trimmed.includes('douyin') || defaultDomain.includes('douyin');
     const domain = isDouyin ? 'https://www.douyin.com' : defaultDomain;
     return domain.replace(/\/+$/, '') + trimmed;
   }
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-    const isDouyin = trimmed.includes('aweme') || trimmed.includes('douyin') || defaultDomain.includes('douyin');
+    const isDouyin =
+      trimmed.includes('aweme') || trimmed.includes('douyin') || defaultDomain.includes('douyin');
     const domain = isDouyin ? 'https://www.douyin.com' : defaultDomain;
     return domain.replace(/\/+$/, '') + '/' + trimmed;
   }
   return trimmed;
 }
 
-// Health check
-app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    app: 'SnapTikDou',
-    version: '1.2.0',
-    capabilities: ['tiktok', 'douyin', 'photos', 'audio', 'video_hd', 'batch_zip'],
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Platform detection helpers
 function isDouyinUrl(url: string): boolean {
   return /douyin\.com|iesdouyin\.com/i.test(url);
 }
@@ -235,17 +175,18 @@ function isTikTokUrl(url: string): boolean {
   return /tiktok\.com/i.test(url);
 }
 
-// Trích xuất chuẩn xác link URL đầu tiên có trong văn bản (Sanitize Input)
 function extractCleanUrl(rawInput: string): string {
   if (!rawInput || typeof rawInput !== 'string') return '';
-  // Chuẩn hóa ký tự khoảng trắng đặc biệt từ Douyin/WeChat sang space thường
-  const normalized = rawInput.replace(/[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000\ufeff]/g, ' ');
-  // Bắt chính xác link http/https dừng lại trước dấu cách hoặc ký tự tiếng Trung
-  const match = normalized.match(/https?:\/\/[^\s"'<>\[\]\(\)\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/i);
+  const normalized = rawInput.replace(
+    /[\u00a0\u1680\u180e\u2000-\u200b\u202f\u205f\u3000\ufeff]/g,
+    ' '
+  );
+  const match = normalized.match(
+    /https?:\/\/[^\s"'<>\[\]\(\)\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]+/i
+  );
   return match ? match[0].replace(/[.,;:!?)\]}]+$/, '').trim() : rawInput.trim();
 }
 
-// Extract Douyin item ID from various URL patterns
 function extractDouyinId(urlOrText: string): string | null {
   if (!urlOrText || typeof urlOrText !== 'string') return null;
   const patterns = [
@@ -262,7 +203,6 @@ function extractDouyinId(urlOrText: string): string | null {
   return null;
 }
 
-// Extract TikTok video or photo ID from various URL patterns
 function extractTikTokId(urlOrText: string): string | null {
   if (!urlOrText || typeof urlOrText !== 'string') return null;
   const patterns = [
@@ -278,12 +218,10 @@ function extractTikTokId(urlOrText: string): string | null {
   return null;
 }
 
-// Dynamic TTWID Token with in-memory caching
 let cachedTtwid = '';
 let cachedTtwidTime = 0;
 
 async function getTtwid(): Promise<string> {
-  // 6 hours cache validity
   if (cachedTtwid && Date.now() - cachedTtwidTime < 6 * 3600 * 1000) {
     return cachedTtwid;
   }
@@ -303,7 +241,8 @@ async function getTtwid(): Promise<string> {
         cbUrlProtocol: 'https',
         union: true,
       }),
-      timeout: 8000,
+      timeout: 5000,
+      useProxy: true,
     });
     const setCookie = res.headers.getSetCookie?.()?.[0] || res.headers.get('set-cookie') || '';
     const match = setCookie.match(/ttwid=([^;]+)/);
@@ -313,24 +252,19 @@ async function getTtwid(): Promise<string> {
       return cachedTtwid;
     }
   } catch (err) {
-    console.warn('Failed to register ttwid cookie:', err);
+    console.warn('Ttwid registration fallback');
   }
   return cachedTtwid;
 }
 
-// Helper to resolve shortlinks (vt.tiktok.com, vm.tiktok.com, v.douyin.com)
 async function resolveFinalUrl(rawUrl: string): Promise<string> {
   let currentUrl = extractCleanUrl(rawUrl);
-
-  // If URL already contains a valid ID, avoid redundant redirects
   if (extractDouyinId(currentUrl) || extractTikTokId(currentUrl)) {
     return currentUrl;
   }
-
   const isDouyin = isDouyinUrl(currentUrl);
   const ttwid = isDouyin ? await getTtwid() : '';
 
-  // Follow up to 8 redirects to capture ultimate URL and query parameters
   for (let i = 0; i < 8; i++) {
     try {
       const headers: Record<string, string> = {
@@ -341,22 +275,20 @@ async function resolveFinalUrl(rawUrl: string): Promise<string> {
       if (isDouyin && ttwid) {
         headers['Cookie'] = `ttwid=${ttwid};`;
       }
-
       const res = await smartFetch(currentUrl, {
         method: 'GET',
         redirect: 'manual',
         headers,
-        timeout: 6000,
+        timeout: 5000,
+        useProxy: true,
       });
-
       const location = res.headers.get('location');
-      if (location && (res.status >= 300 && res.status < 400)) {
+      if (location && res.status >= 300 && res.status < 400) {
         if (location.startsWith('http')) {
           currentUrl = location;
         } else {
           currentUrl = new URL(location, currentUrl).toString();
         }
-        // If we found a direct video ID in location, we can stop early
         if (extractDouyinId(currentUrl) || extractTikTokId(currentUrl)) {
           return currentUrl;
         }
@@ -370,13 +302,37 @@ async function resolveFinalUrl(rawUrl: string): Promise<string> {
   return currentUrl;
 }
 
-// Formatter to standardize Douyin aweme detail into app payload
+async function fetchFromCloudflareWorker(rawUrlOrClean: string) {
+  const cleanUrl = extractCleanUrl(rawUrlOrClean) || rawUrlOrClean;
+  try {
+    const res = await fetch(CLOUDFLARE_WORKER_URL.replace(/\/$/, ''), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': CLOUDFLARE_AUTH_TOKEN,
+      },
+      body: JSON.stringify({ url: cleanUrl }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const json = (await res.json()) as any;
+      const detail = json.aweme_detail || json.data?.aweme_detail || json.data;
+      const awemeId = String(json.awemeId || detail?.aweme_id || extractDouyinId(cleanUrl) || '');
+      if (detail && (detail.aweme_id || detail.video || detail.images || awemeId)) {
+        return formatDouyinAweme(detail, cleanUrl, awemeId);
+      }
+      if (json.video?.noWatermark) {
+        return json;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
-  // Determine media type (video vs photo slide / note)
   const isPhotos = Array.isArray(aweme.images) && aweme.images.length > 0;
   const mediaType: 'video' | 'photos' = isPhotos ? 'photos' : 'video';
 
-  // Extract photos
   const images: string[] = [];
   if (isPhotos) {
     for (const img of aweme.images) {
@@ -387,53 +343,46 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
     }
   }
 
-  // Thuật toán bóc tách luồng CDN nguyên bản (Full Length > 10 phút, không dính giới hạn xem thử)
-  const pickBestDouyinStreamUrl = (urlList: string[] | undefined | null): {
-    primary: string;
-    directCdn: string;
-    sanitizedPlay: string;
-    allUrls: string[];
-  } => {
+  const pickBestDouyinStreamUrl = (
+    urlList: string[] | undefined | null
+  ): { primary: string; directCdn: string; sanitizedPlay: string; allUrls: string[] } => {
     if (!Array.isArray(urlList) || urlList.length === 0) {
       return { primary: '', directCdn: '', sanitizedPlay: '', allUrls: [] };
     }
-
     const allUrls: string[] = [];
     let directCdn = '';
-
     for (const u of urlList) {
       if (!u || typeof u !== 'string') continue;
       const trimmed = u.trim();
       if (!trimmed) continue;
       if (!allUrls.includes(trimmed)) allUrls.push(trimmed);
-
-      // CỰC KỲ QUAN TRỌNG: Các domain CDN này chứa TOÀN BỘ video gốc không bị cắt 2 phút
-      if (!directCdn && /douyinvod\.com|zjcdn\.com|byteimg\.com|snssdk\.com\/video\/tos|ixigua\.com|pstatp\.com/i.test(trimmed)) {
+      if (
+        !directCdn &&
+        /douyinvod\.com|zjcdn\.com|byteimg\.com|snssdk\.com\/video\/tos|ixigua\.com|pstatp\.com/i.test(
+          trimmed
+        )
+      ) {
         directCdn = trimmed;
       }
     }
-
-    // Nếu là link play redirect, tự động loại bỏ playwm sang play
-    const rawPlayUrl = urlList.find((u) => u && (u.includes('playwm') || u.includes('/play/'))) || urlList[0] || '';
-    const sanitizedPlay = rawPlayUrl ? rawPlayUrl.replace('/playwm/', '/play/').replace(/playwm/g, 'play') : '';
+    const rawPlayUrl =
+      urlList.find((u) => u && (u.includes('playwm') || u.includes('/play/'))) || urlList[0] || '';
+    const sanitizedPlay = rawPlayUrl
+      ? rawPlayUrl.replace('/playwm/', '/play/').replace(/playwm/g, 'play')
+      : '';
     if (sanitizedPlay && !allUrls.includes(sanitizedPlay)) {
       allUrls.push(sanitizedPlay);
     }
-
-    // Ưu tiên cao nhất: CDN trực tiếp -> nếu không có mới dùng sanitizedPlay
     const primary = directCdn || sanitizedPlay || urlList[0] || '';
-
     return { primary, directCdn, sanitizedPlay, allUrls };
   };
 
-  // Extract video streams (HD 1080p, Standard SD, Watermark, Backup URLs)
   let noWatermarkVideo = '';
   let hdVideo = '';
   let watermarkVideo = '';
   let videoSize = 0;
   let hdVideoSize = 0;
   const backupUrls: string[] = [];
-
   const addBackup = (u: string | undefined | null) => {
     if (u && typeof u === 'string') {
       const trimmed = u.trim();
@@ -444,14 +393,10 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
   };
 
   if (aweme.video) {
-    // 1. Check bit_rate list for highest quality streams
     if (Array.isArray(aweme.video.bit_rate) && aweme.video.bit_rate.length > 0) {
-      // Find bitrates sorted descending
       const sorted = [...aweme.video.bit_rate].sort(
         (a: any, b: any) => (b.bit_rate || 0) - (a.bit_rate || 0)
       );
-
-      // Highest bitrate (HD 1080p / 720p)
       const topBitrate = sorted[0];
       if (topBitrate?.play_addr?.url_list) {
         const picked = pickBestDouyinStreamUrl(topBitrate.play_addr.url_list);
@@ -460,20 +405,16 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
         watermarkVideo = topBitrate.play_addr.url_list[0] || '';
         picked.allUrls.forEach(addBackup);
       }
-
-      // Standard SD bitrate (720p or 540p or normal gear)
-      const normalBitrate = sorted.find((b: any) =>
-        b.gear_name?.includes('720') || b.gear_name?.includes('540')
-      ) || (sorted.length > 1 ? sorted[sorted.length - 1] : sorted[0]);
-
+      const normalBitrate =
+        sorted.find(
+          (b: any) => b.gear_name?.includes('720') || b.gear_name?.includes('540')
+        ) || (sorted.length > 1 ? sorted[sorted.length - 1] : sorted[0]);
       if (normalBitrate?.play_addr?.url_list) {
         const picked = pickBestDouyinStreamUrl(normalBitrate.play_addr.url_list);
         noWatermarkVideo = picked.primary;
         videoSize = normalBitrate.play_addr.data_size || 0;
         picked.allUrls.forEach(addBackup);
       }
-
-      // Collect all bitrates' URLs as potential backups
       for (const b of sorted) {
         if (b.play_addr?.url_list) {
           b.play_addr.url_list.forEach(addBackup);
@@ -484,7 +425,6 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
       }
     }
 
-    // 2. Also check aweme.video.play_addr_h264 (H.264 standard streams)
     if (aweme.video.play_addr_h264?.url_list) {
       const picked = pickBestDouyinStreamUrl(aweme.video.play_addr_h264.url_list);
       if (!noWatermarkVideo) {
@@ -494,7 +434,6 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
       picked.allUrls.forEach(addBackup);
     }
 
-    // 3. Check aweme.video.play_addr
     if (aweme.video.play_addr?.url_list) {
       const picked = pickBestDouyinStreamUrl(aweme.video.play_addr.url_list);
       if (!noWatermarkVideo) {
@@ -504,7 +443,6 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
       picked.allUrls.forEach(addBackup);
     }
 
-    // 4. Download addr (Douyin full length official download URL)
     if (aweme.video.download_addr?.url_list) {
       if (!watermarkVideo) {
         watermarkVideo = aweme.video.download_addr.url_list[0];
@@ -515,7 +453,6 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
     if (!watermarkVideo && aweme.video.play_addr?.url_list?.[0]) {
       watermarkVideo = aweme.video.play_addr.url_list[0];
     }
-
     if (!hdVideo) {
       hdVideo = noWatermarkVideo;
       hdVideoSize = videoSize;
@@ -526,13 +463,11 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
     }
   }
 
-  // Extract audio
   const audioUrl = aweme.music?.play_url?.url_list?.[0] || '';
   const audioTitle = aweme.music?.title || 'Douyin Audio';
   const audioAuthor = aweme.music?.author || aweme.author?.nickname || 'Douyin Creator';
   const audioDuration = aweme.music?.duration || 0;
 
-  // Cover image
   const coverUrl =
     aweme.video?.origin_cover?.url_list?.[0] ||
     aweme.video?.cover?.url_list?.[0] ||
@@ -540,7 +475,6 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
     images[0] ||
     '';
 
-  // Duration (Douyin provides ms for video duration)
   const durationSec = aweme.video?.duration ? Math.round(aweme.video.duration / 1000) : 0;
 
   return {
@@ -550,12 +484,17 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
     mediaType,
     cover: coverUrl,
     duration: durationSec,
-    createdAt: aweme.create_time ? new Date(aweme.create_time * 1000).toISOString() : new Date().toISOString(),
+    createdAt: aweme.create_time
+      ? new Date(aweme.create_time * 1000).toISOString()
+      : new Date().toISOString(),
     author: {
       id: String(aweme.author?.uid || aweme.author?.sec_uid || ''),
       uniqueId: aweme.author?.unique_id || aweme.author?.short_id || 'douyin_user',
       nickname: aweme.author?.nickname || 'Douyin Creator',
-      avatar: aweme.author?.avatar_thumb?.url_list?.[0] || aweme.author?.avatar_medium?.url_list?.[0] || '',
+      avatar:
+        aweme.author?.avatar_thumb?.url_list?.[0] ||
+        aweme.author?.avatar_medium?.url_list?.[0] ||
+        '',
     },
     stats: {
       plays: aweme.statistics?.play_count || 0,
@@ -584,7 +523,6 @@ function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
   };
 }
 
-// --- TẦNG 2: BÓC TÁCH TỪ MOBILE SHARE HTML (ĐI QUA CLOUDFLARE WARP) ---
 async function extractDouyinMobileHtml(awemeId: string, originalUrl: string) {
   const shareUrls = [
     `https://www.iesdouyin.com/share/video/${awemeId}/`,
@@ -600,7 +538,7 @@ async function extractDouyinMobileHtml(awemeId: string, originalUrl: string) {
           'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
           Cookie: ttwid ? `ttwid=${ttwid};` : '',
         },
-        timeout: 5000,
+        timeout: 4500,
         useProxy: true,
       });
       if (!res.ok) continue;
@@ -622,36 +560,164 @@ async function extractDouyinMobileHtml(awemeId: string, originalUrl: string) {
       if (item && item.aweme_id) {
         return formatDouyinAweme(item, originalUrl, String(item.aweme_id));
       }
-    } catch (e: any) {
-      console.warn('Douyin Mobile HTML extractor failed for', sUrl, e?.message || e);
-    }
+    } catch {}
   }
   return null;
 }
 
-// Wrapper trích xuất dữ liệu Douyin đa tầng với cơ chế Fast-Failover
+async function extractDouyinMobileSSR(awemeId: string, targetUrl: string) {
+  const ttwid = await getTtwid();
+  const urlsToFetch = [
+    `https://www.douyin.com/share/video/${awemeId}`,
+    `https://www.douyin.com/video/${awemeId}`,
+    `https://www.iesdouyin.com/share/video/${awemeId}/`,
+  ];
+  for (const pageUrl of urlsToFetch) {
+    try {
+      const pageRes = await smartFetch(pageUrl, {
+        headers: {
+          'User-Agent': DOUYIN_MOBILE_USER_AGENT,
+          Referer: 'https://www.douyin.com/',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          Cookie: ttwid ? `ttwid=${ttwid};` : '',
+        },
+        timeout: 4500,
+        useProxy: true,
+      });
+      if (!pageRes.ok) continue;
+      const html = await pageRes.text();
+
+      const routerMatch =
+        html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\});<\/script>/) ||
+        html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\})\s*;/);
+      if (routerMatch && routerMatch[1]) {
+        try {
+          const parsed = JSON.parse(routerMatch[1]);
+          const loaderData = parsed?.loaderData;
+          const item =
+            loaderData?.[`video_(id)/page`]?.videoInfoRes?.item_list?.[0] ||
+            loaderData?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
+            parsed?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
+            loaderData?.['video-detail']?.awemeDetail;
+          if (item) {
+            return formatDouyinAweme(item, targetUrl, awemeId);
+          }
+        } catch {}
+      }
+
+      const renderMatch = html.match(
+        /<script id="RENDER_DATA" type="application\/json">([\s\S]*?)<\/script>/
+      );
+      if (renderMatch && renderMatch[1]) {
+        try {
+          const decoded = decodeURIComponent(renderMatch[1].trim());
+          const parsed = JSON.parse(decoded);
+          const detail =
+            parsed?.appContext?._state?.awemeDetail ||
+            parsed?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
+            (
+              Object.values(parsed || {}).find(
+                (v: any) => v?.videoInfoRes?.item_list?.[0]
+              ) as any
+            )?.videoInfoRes?.item_list?.[0];
+          if (detail) {
+            return formatDouyinAweme(detail, targetUrl, awemeId);
+          }
+        } catch {}
+      }
+
+      const uniMatch = html.match(
+        /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">([\s\S]*?)<\/script>/
+      );
+      if (uniMatch && uniMatch[1]) {
+        try {
+          const parsed = JSON.parse(uniMatch[1]);
+          const loaderData = parsed?.__DEFAULT_SCOPE__?.['webapp.user-sub-route']?.loaderData;
+          const detail =
+            loaderData?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
+            loaderData?.[`video_(id)/page`]?.videoInfoRes?.item_list?.[0] ||
+            parsed?.__DEFAULT_SCOPE__?.['webapp.video-detail']?.awemeDetail;
+          if (detail) {
+            return formatDouyinAweme(detail, targetUrl, awemeId);
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+  return null;
+}
+
+async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: string) {
+  const ttwid = await getTtwid();
+  try {
+    const iesRes = await smartFetch(
+      `https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=${awemeId}`,
+      {
+        headers: {
+          'User-Agent': DOUYIN_MOBILE_USER_AGENT,
+          Referer: 'https://www.douyin.com/',
+          Accept: 'application/json, text/plain, */*',
+          Cookie: ttwid ? `ttwid=${ttwid};` : '',
+        },
+        timeout: 4500,
+        useProxy: true,
+      }
+    );
+    if (iesRes.ok) {
+      const iesJson = await iesRes.json();
+      if (iesJson?.item_list?.[0]) {
+        return formatDouyinAweme(iesJson.item_list[0], targetUrl, awemeId);
+      }
+    }
+  } catch {}
+
+  try {
+    const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
+    const response = await smartFetch(detailApiUrl, {
+      headers: {
+        'User-Agent': DOUYIN_USER_AGENT,
+        Referer: `https://www.douyin.com/video/${awemeId}`,
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        Cookie: ttwid ? `ttwid=${ttwid};` : '',
+      },
+      timeout: 4500,
+      useProxy: true,
+    });
+    if (response.ok) {
+      const json = await response.json();
+      if (json?.aweme_detail) {
+        return formatDouyinAweme(json.aweme_detail, targetUrl, awemeId);
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
 async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
   const cleanUrl = extractCleanUrl(douyinUrl) || douyinUrl;
   let awemeId = extractDouyinId(cleanUrl) || extractDouyinId(douyinUrl);
   const targetUrl = originalUrl || cleanUrl;
 
-  // Nếu chưa có awemeId, dùng resolveFinalUrl chạy qua WARP để lấy ID thực tế
   if (!awemeId) {
     const resolved = await resolveFinalUrl(cleanUrl);
     awemeId = extractDouyinId(resolved);
   }
 
-  // 1. Thử Cloudflare Worker Edge với timeout rút ngắn còn 5 giây (tránh treo giao diện)
+  // 1. Thử Cloudflare Worker Edge (Timeout 4s)
   try {
     const cfPromise = fetchFromCloudflareWorker(cleanUrl);
-    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 5000));
-    const cfData = await Promise.race([cfPromise, timeoutPromise]) as any;
+    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 4000));
+    const cfData = (await Promise.race([cfPromise, timeoutPromise])) as any;
     if (cfData && (cfData.video?.noWatermark || cfData.images?.length > 0)) {
       return cfData;
     }
   } catch {}
 
-  // 2. Tầng WARP Native API & Mobile HTML/SSR (IP sạch từ Cloudflare WARP 127.0.0.1:40000)
+  // 2. Tầng WARP Native API & Mobile HTML/SSR
   if (awemeId) {
     try {
       const warpData = await extractDouyinNativeApiWarp(awemeId, targetUrl);
@@ -675,10 +741,13 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
     } catch {}
   }
 
-  // 3. Fallback TikWM (Dự phòng cuối cùng)
+  // 3. Fallback TikWM (Chỉ dùng www.tikwm.com)
   try {
     const tikwmData = await extractFromTikWM(cleanUrl);
-    if (tikwmData && (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))) {
+    if (
+      tikwmData &&
+      (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))
+    ) {
       const isPhotos = Array.isArray(tikwmData.images) && tikwmData.images.length > 0;
       return {
         id: String(tikwmData.id || awemeId || Date.now()),
@@ -687,7 +756,9 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
         mediaType: (isPhotos ? 'photos' : 'video') as 'photos' | 'video',
         cover: normalizeMediaUrl(tikwmData.cover || tikwmData.origin_cover),
         duration: tikwmData.duration || 0,
-        createdAt: tikwmData.create_time ? new Date(tikwmData.create_time * 1000).toISOString() : new Date().toISOString(),
+        createdAt: tikwmData.create_time
+          ? new Date(tikwmData.create_time * 1000).toISOString()
+          : new Date().toISOString(),
         author: {
           id: String(tikwmData.author?.id || ''),
           uniqueId: tikwmData.author?.unique_id || 'douyin_user',
@@ -729,151 +800,6 @@ async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
   return null;
 }
 
-// Douyin Extraction Tiers:
-// Tầng 2: Mobile SSR HTML Page Extractor (trích xuất _ROUTER_DATA / RENDER_DATA / __UNIVERSAL_DATA_FOR_REHYDRATION__)
-async function extractDouyinMobileSSR(awemeId: string, targetUrl: string) {
-  const ttwid = await getTtwid();
-  const urlsToFetch = [
-    `https://www.douyin.com/share/video/${awemeId}`,
-    `https://www.douyin.com/video/${awemeId}`,
-    `https://www.iesdouyin.com/share/video/${awemeId}/`,
-  ];
-
-  for (const pageUrl of urlsToFetch) {
-    try {
-      const pageRes = await smartFetch(pageUrl, {
-        headers: {
-          'User-Agent': DOUYIN_MOBILE_USER_AGENT,
-          Referer: 'https://www.douyin.com/',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          Cookie: ttwid ? `ttwid=${ttwid};` : '',
-        },
-        timeout: 5000,
-        useProxy: true,
-      });
-
-      if (!pageRes.ok) continue;
-      const html = await pageRes.text();
-
-      // 1. window._ROUTER_DATA / window._SSR_DATA
-      const routerMatch =
-        html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\});<\/script>/) ||
-        html.match(/window\._ROUTER_DATA\s*=\s*(\{[\s\S]*?\})\s*;/);
-      if (routerMatch && routerMatch[1]) {
-        try {
-          const parsed = JSON.parse(routerMatch[1]);
-          const loaderData = parsed?.loaderData;
-          const item =
-            loaderData?.[`video_(id)/page`]?.videoInfoRes?.item_list?.[0] ||
-            loaderData?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
-            parsed?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
-            loaderData?.['video-detail']?.awemeDetail;
-          if (item) {
-            return formatDouyinAweme(item, targetUrl, awemeId);
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      // 2. RENDER_DATA
-      const renderMatch = html.match(/<script id="RENDER_DATA" type="application\/json">([\s\S]*?)<\/script>/);
-      if (renderMatch && renderMatch[1]) {
-        try {
-          const decoded = decodeURIComponent(renderMatch[1].trim());
-          const parsed = JSON.parse(decoded);
-          const detail =
-            parsed?.appContext?._state?.awemeDetail ||
-            parsed?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
-            (Object.values(parsed || {}).find((v: any) => v?.videoInfoRes?.item_list?.[0]) as any)?.videoInfoRes?.item_list?.[0];
-          if (detail) {
-            return formatDouyinAweme(detail, targetUrl, awemeId);
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      // 3. __UNIVERSAL_DATA_FOR_REHYDRATION__
-      const uniMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">([\s\S]*?)<\/script>/);
-      if (uniMatch && uniMatch[1]) {
-        try {
-          const parsed = JSON.parse(uniMatch[1]);
-          const loaderData = parsed?.__DEFAULT_SCOPE__?.['webapp.user-sub-route']?.loaderData;
-          const detail =
-            loaderData?.[`video_(${awemeId})/page`]?.videoInfoRes?.item_list?.[0] ||
-            loaderData?.[`video_(id)/page`]?.videoInfoRes?.item_list?.[0] ||
-            parsed?.__DEFAULT_SCOPE__?.['webapp.video-detail']?.awemeDetail;
-          if (detail) {
-            return formatDouyinAweme(detail, targetUrl, awemeId);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    } catch (err: any) {
-      console.warn('Douyin Mobile SSR attempt failed for', pageUrl, err?.message || err);
-    }
-  }
-  return null;
-}
-
-// Tầng 3: Native ByteDance API qua WARP SOCKS5 Proxy (127.0.0.1:40000)
-async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: string) {
-  const ttwid = await getTtwid();
-
-  // 1. iesdouyin iteminfo API
-  try {
-    const iesRes = await smartFetch(`https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=${awemeId}`, {
-      headers: {
-        'User-Agent': DOUYIN_MOBILE_USER_AGENT,
-        Referer: 'https://www.douyin.com/',
-        Accept: 'application/json, text/plain, */*',
-        Cookie: ttwid ? `ttwid=${ttwid};` : '',
-      },
-      timeout: 6000,
-      useProxy: true,
-    });
-    if (iesRes.ok) {
-      const iesJson = await iesRes.json();
-      if (iesJson?.item_list?.[0]) {
-        return formatDouyinAweme(iesJson.item_list[0], targetUrl, awemeId);
-      }
-    }
-  } catch (e: any) {
-    console.warn('Douyin ies API fetch failed:', e?.message || e);
-  }
-
-  // 2. douyin.com webapp detail endpoint (qua smartFetch / WARP Proxy)
-  try {
-    const detailApiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${awemeId}&aid=6383&device_platform=webapp&version_code=170400&channel=channel_pc_web`;
-    const response = await smartFetch(detailApiUrl, {
-      headers: {
-        'User-Agent': DOUYIN_USER_AGENT,
-        Referer: `https://www.douyin.com/video/${awemeId}`,
-        Accept: 'application/json, text/plain, */*',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        Cookie: ttwid ? `ttwid=${ttwid};` : '',
-      },
-      timeout: 6000,
-      useProxy: true,
-    });
-
-    if (response.ok) {
-      const json = await response.json();
-      if (json?.aweme_detail) {
-        return formatDouyinAweme(json.aweme_detail, targetUrl, awemeId);
-      }
-    }
-  } catch (e: any) {
-    console.warn('Douyin Web Detail API fetch failed:', e?.message || e);
-  }
-
-  return null;
-}
-
-// TikTok Official ByteDance Mobile Feed Extractor (Tier 1: Direct, highest quality, no watermark)
 const TIKTOK_FEED_HOSTS = [
   'api19-normal-useast5.tiktokv.us',
   'api16-normal-useast5.tiktokv.us',
@@ -892,14 +818,11 @@ async function extractTikTokOfficial(videoId: string) {
             'com.zhiliaoapp.musically/300904 (2018111632; U; Android 10; en_US; Pixel 4; Build/QQ3A.200805.001; Cronet/58.0.2991.0)',
           Accept: '*/*',
         },
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(5000),
       });
-
       if (!res.ok && res.status !== 200) continue;
-
       const buf = Buffer.from(await res.arrayBuffer());
       if (!buf || buf.length === 0) continue;
-
       let jsonStr = '';
       if (buf[0] === 0x1f && buf[1] === 0x8b) {
         jsonStr = zlib.gunzipSync(buf).toString('utf8');
@@ -912,26 +835,22 @@ async function extractTikTokOfficial(videoId: string) {
           jsonStr = buf.toString('utf8');
         }
       }
-
       if (!jsonStr.startsWith('{')) continue;
-
       const data = JSON.parse(jsonStr);
       const aweme = data.aweme_list?.find((item: any) => String(item.aweme_id) === String(videoId));
       if (
         aweme &&
         String(aweme.aweme_id) === String(videoId) &&
-        (aweme.video?.play_addr || (aweme.image_post_info?.images && aweme.image_post_info.images.length > 0))
+        (aweme.video?.play_addr ||
+          (aweme.image_post_info?.images && aweme.image_post_info.images.length > 0))
       ) {
         return aweme;
       }
-    } catch {
-      // try next host
-    }
+    } catch {}
   }
   return null;
 }
 
-// SSSTik Extractor (fallback)
 async function extractFromSSSTik(targetUrl: string) {
   try {
     let cleanUrl = targetUrl;
@@ -940,10 +859,7 @@ async function extractFromSSSTik(targetUrl: string) {
       if (parsed.pathname.includes('/video/') || parsed.pathname.includes('/photo/')) {
         cleanUrl = `${parsed.origin}${parsed.pathname}`;
       }
-    } catch {
-      // ignore
-    }
-
+    } catch {}
     const pageRes = await fetch('https://ssstik.io/en', {
       headers: { 'User-Agent': TIKTOK_USER_AGENT },
       signal: AbortSignal.timeout(5000),
@@ -952,7 +868,6 @@ async function extractFromSSSTik(targetUrl: string) {
     const pageHtml = await pageRes.text();
     const m = pageHtml.match(/s_tt\s*=\s*['"]([^'"]+)['"]/);
     if (!m) return null;
-
     const cookie = pageRes.headers.get('set-cookie') || '';
     const postRes = await fetch('https://ssstik.io/abc?url=dl', {
       method: 'POST',
@@ -967,18 +882,15 @@ async function extractFromSSSTik(targetUrl: string) {
         Referer: 'https://ssstik.io/en',
       },
       body: new URLSearchParams({ id: cleanUrl, locale: 'en', tt: m[1] }),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(6000),
     });
-
     if (!postRes.ok) return null;
     const html = await postRes.text();
-
     const videoMatch = html.match(/href="([^"]+)"[^>]*class="[^"]*without_watermark/);
     const titleMatch = html.match(/<p[^>]*class="maintext"[^>]*>(.*?)<\/p>/);
     const authorMatch = html.match(/<h2>(.*?)<\/h2>/);
     const avatarMatch = html.match(/<img[^>]*class="result_author"[^>]*src="([^"]+)"/);
     const musicMatch = html.match(/href="([^"]+)"[^>]*class="[^"]*music/);
-
     const images: string[] = [];
     const splideMatches = [...html.matchAll(/<li[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"/gi)];
     for (const sm of splideMatches) {
@@ -986,7 +898,6 @@ async function extractFromSSSTik(targetUrl: string) {
         images.push(sm[1]);
       }
     }
-
     if (videoMatch || images.length > 0) {
       return {
         video: videoMatch ? videoMatch[1] : '',
@@ -997,493 +908,132 @@ async function extractFromSSSTik(targetUrl: string) {
         music: musicMatch ? musicMatch[1] : '',
       };
     }
-  } catch (err: any) {
-    console.warn('SSSTik extraction failed:', err?.message || err);
-  }
+  } catch {}
   return null;
 }
 
-// TikWM Extractor with multiple fallback mirrors & increased timeout
+// TikWM chỉ dùng www.tikwm.com để tránh lỗi ENOTFOUND
 async function extractFromTikWM(targetUrl: string) {
-  // Clean tracking parameters to give cleaner URLs to TikWM
   let cleanUrl = targetUrl;
   try {
     const parsed = new URL(targetUrl);
-    // Keep clean pathname if standard video or photo url
     if (parsed.pathname.includes('/video/') || parsed.pathname.includes('/photo/')) {
       cleanUrl = `${parsed.origin}${parsed.pathname}`;
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
 
   const urlsToTry = [cleanUrl];
   if (cleanUrl !== targetUrl) {
     urlsToTry.push(targetUrl);
   }
 
-  const mirrors = [
-    'https://www.tikwm.com/api/',
-    'https://api.tikwm.com/api/',
-  ];
-
-  let lastError: Error | null = null;
-
   for (const url of urlsToTry) {
-    // Fast GET request to tikwm (returns instantly with code 0 on valid URLs)
     try {
-      const getRes = await smartFetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}&hd=1`, {
-        headers: { 'User-Agent': TIKTOK_USER_AGENT },
-        timeout: 8000,
-      });
+      const getRes = await smartFetch(
+        `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}&hd=1`,
+        {
+          headers: { 'User-Agent': TIKTOK_USER_AGENT },
+          timeout: 6000,
+        }
+      );
       if (getRes.ok) {
         const json = (await getRes.json()) as any;
         if (json && json.code === 0 && json.data) {
           return json.data;
         }
       }
-    } catch (err: any) {
-      lastError = err;
-    }
+    } catch {}
 
-    for (const mirror of mirrors) {
-      try {
-        const response = await smartFetch(mirror, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'User-Agent': TIKTOK_USER_AGENT,
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          },
-          body: new URLSearchParams({
-            url,
-            count: '12',
-            cursor: '0',
-            web: '1',
-            hd: '1',
-          }),
-          timeout: 8000,
-        });
-
-        if (!response.ok) {
-          continue;
-        }
-
+    try {
+      const response = await smartFetch('https://www.tikwm.com/api/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'User-Agent': TIKTOK_USER_AGENT,
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        },
+        body: new URLSearchParams({
+          url,
+          count: '12',
+          cursor: '0',
+          web: '1',
+          hd: '1',
+        }),
+        timeout: 6000,
+      });
+      if (response.ok) {
         const json = (await response.json()) as any;
         if (json && json.code === 0 && json.data) {
           return json.data;
         }
-      } catch (err: any) {
-        lastError = err;
       }
-    }
+    } catch {}
   }
-
-  throw lastError || new Error('Không thể trích xuất dữ liệu từ TikTok');
+  throw new Error('TikWM không phân giải được link');
 }
 
-// Tiklydown API Extractor (Tier 3 fallback for both Douyin and TikTok)
-async function extractFromTiklydown(targetUrl: string) {
-  const endpoints = [
-    `https://api.tiklydown.eu.org/api/download?url=${encodeURIComponent(targetUrl)}`,
-    `https://api.tiklydown.eu.org/api/download/v2?url=${encodeURIComponent(targetUrl)}`,
-    `https://api.tiklydown.eu.org/api/download/v3?url=${encodeURIComponent(targetUrl)}`,
-  ];
-
-  for (const ep of endpoints) {
-    try {
-      const res = await smartFetch(ep, {
-        headers: { 'User-Agent': TIKTOK_USER_AGENT, Accept: 'application/json' },
-        timeout: 8000,
-      });
-      if (res.ok) {
-        const json = (await res.json()) as any;
-        if (json && (json.video || json.images || json.status === 200 || json.status === 'success' || json.result)) {
-          const data = json.result || json.data || json;
-          const isPhotos = Array.isArray(data.images) && data.images.length > 0;
-          const images = isPhotos
-            ? data.images
-                .map((img: any) => (typeof img === 'string' ? img : img.url || img.url_list?.[0]))
-                .filter(Boolean)
-            : [];
-          const noWatermark =
-            data.video?.noWatermark || data.video?.url || data.video?.play_addr?.url_list?.[0] || data.video_url || '';
-          const hd = data.video?.watermark || data.video?.hd_url || noWatermark;
-          const audioUrl = data.music?.play_url?.url_list?.[0] || data.music?.url || data.music_url || '';
-
-          if (noWatermark || images.length > 0) {
-            return {
-              id: String(data.id || Date.now()),
-              url: targetUrl,
-              title: data.title || data.desc || 'Media',
-              mediaType: (isPhotos ? 'photos' : 'video') as 'photos' | 'video',
-              cover: normalizeMediaUrl(data.cover || data.video?.cover || images[0]),
-              duration: data.duration || 0,
-              createdAt: new Date().toISOString(),
-              author: {
-                id: String(data.author?.id || data.author?.uid || ''),
-                uniqueId: data.author?.unique_id || data.author?.username || 'creator',
-                nickname: data.author?.nickname || data.author?.name || 'Creator',
-                avatar: normalizeMediaUrl(data.author?.avatar || data.author?.avatar_thumb?.url_list?.[0]),
-              },
-              stats: {
-                plays: data.stats?.play_count || 0,
-                likes: data.stats?.like_count || data.stats?.digg_count || 0,
-                comments: data.stats?.comment_count || 0,
-                shares: data.stats?.share_count || 0,
-                downloads: data.stats?.download_count || 0,
-              },
-              video: {
-                noWatermark: normalizeMediaUrl(noWatermark),
-                hd: normalizeMediaUrl(hd),
-                watermark: normalizeMediaUrl(data.video?.watermark || noWatermark),
-                size: 0,
-                hdSize: 0,
-                backupUrls: [normalizeMediaUrl(hd), normalizeMediaUrl(noWatermark)].filter(Boolean),
-              },
-              images: images.map((u: string) => normalizeMediaUrl(u)),
-              audio: {
-                url: normalizeMediaUrl(audioUrl),
-                title: data.music?.title || 'Audio Track',
-                author: data.music?.author || 'Creator',
-                duration: data.music?.duration || 0,
-              },
-            };
-          }
-        }
-      }
-    } catch {
-      // try next endpoint
-    }
-  }
-  return null;
-}
-
-// Fallback HTML / oEmbed extractor for basic info if external API is restricted
-async function extractOEmbedInfo(targetUrl: string) {
-  try {
-    const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(targetUrl)}`;
-    const res = await smartFetch(oembedUrl, {
-      headers: { 'User-Agent': TIKTOK_USER_AGENT },
-      timeout: 5000,
-    });
-    if (res.ok) {
-      const data = (await res.json()) as any;
-      return data;
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-// Session cache for MusicalDown to speed up requests
-let mdSessionCache: {
-  cookies: string;
-  urlField: string;
-  hiddenField: string;
-  hiddenVal: string;
-  timestamp: number;
-} | null = null;
-
-// Fallback high-speed TikTok extractor via MusicalDown engine
-async function extractFromMusicalDown(tiktokUrl: string) {
-  const userAgent =
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-
-  let cookies = '';
-  let urlField = '';
-  let hiddenField = '';
-  let hiddenVal = '';
-
-  const now = Date.now();
-  if (mdSessionCache && now - mdSessionCache.timestamp < 5 * 60 * 1000) {
-    cookies = mdSessionCache.cookies;
-    urlField = mdSessionCache.urlField;
-    hiddenField = mdSessionCache.hiddenField;
-    hiddenVal = mdSessionCache.hiddenVal;
-  } else {
-    const homeRes = await fetch('https://musicaldown.com/en', {
-      headers: { 'User-Agent': userAgent },
-      signal: AbortSignal.timeout(15000),
-    });
-    cookies = homeRes.headers.get('set-cookie') || '';
-    const html = await homeRes.text();
-
-    const urlInputMatch = html.match(/<input name="([^"]+)"[^>]*id="link_url"/);
-    const hiddenInputMatch = html.match(/<input name="([^"]+)" type="hidden" value="([^"]+)"/);
-
-    if (!urlInputMatch || !hiddenInputMatch) {
-      throw new Error('Could not parse MusicalDown form');
-    }
-
-    urlField = urlInputMatch[1];
-    hiddenField = hiddenInputMatch[1];
-    hiddenVal = hiddenInputMatch[2];
-
-    mdSessionCache = {
-      cookies,
-      urlField,
-      hiddenField,
-      hiddenVal,
-      timestamp: now,
-    };
-  }
-
-  const body = new URLSearchParams();
-  body.append(urlField, tiktokUrl);
-  body.append(hiddenField, hiddenVal);
-  body.append('verify', '1');
-
-  const dlRes = await fetch('https://musicaldown.com/download', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': userAgent,
-      Cookie: cookies,
-      Referer: 'https://musicaldown.com/en',
-    },
-    body: body.toString(),
-    signal: AbortSignal.timeout(20000),
-  });
-
-  if (!dlRes.ok) {
-    mdSessionCache = null; // Clear cache on failure
-    throw new Error('MusicalDown request failed');
-  }
-
-  const resultHtml = await dlRes.text();
-
-  // Extract fastdl download links
-  const downloadLinks = [...resultHtml.matchAll(/href="([^"]+)"[^>]*download/gi)].map((m) => m[1]);
-
-  let videoHd = '';
-  let videoNoWm = '';
-  let audioUrl = '';
-
-  for (const link of downloadLinks) {
-    let directCdn = '';
-    let isAudio = false;
-    try {
-      const tokenMatch = link.match(/token=([a-zA-Z0-9_\-.]+)/);
-      if (tokenMatch) {
-        const payload = JSON.parse(Buffer.from(tokenMatch[1].split('.')[1], 'base64').toString('utf8'));
-        if (payload.type === 'mp3') {
-          isAudio = true;
-          directCdn = payload.mp3 || payload.url || '';
-        } else {
-          directCdn = payload.url || '';
-        }
-      }
-    } catch {
-      // ignore
-    }
-
-    if (isAudio || link.includes('type=mp3')) {
-      if (!audioUrl) audioUrl = directCdn || link;
-    } else {
-      if (!videoHd) {
-        videoHd = directCdn || link;
-      } else if (!videoNoWm) {
-        videoNoWm = directCdn || link;
-      }
-    }
-  }
-
-  if (!videoNoWm) videoNoWm = videoHd;
-
-  // Title / description
-  const titleMatch =
-    resultHtml.match(/<h2[^>]*class="[^"]*video-desc[^"]*"[^>]*>([\s\S]*?)<\/h2>/i) ||
-    resultHtml.match(/<p[^>]*class="[^"]*video-desc[^"]*"[^>]*>([\s\S]*?)<\/p>/i);
-  const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : 'TikTok Media';
-
-  // Author
-  const authorMatch = resultHtml.match(/<h2[^>]*class="[^"]*video-author[^"]*"[^>]*>([\s\S]*?)<\/h2>/i);
-  const author = authorMatch ? authorMatch[1].replace(/<[^>]+>/g, '').trim() : 'tiktok_user';
-
-  // Thumbnail
-  const imgMatch = resultHtml.match(/<img[^>]*class="[^"]*responsive-img[^"]*"[^>]*src="([^"]+)"/i);
-  const cover = imgMatch ? imgMatch[1] : '';
-
-  return {
-    videoHd,
-    videoNoWm,
-    audioUrl,
-    title,
-    author: author.replace(/^@/, ''),
-    cover,
-  };
-}
-
-// Extract endpoint supporting both TikTok & Douyin
 app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
   try {
     const { url } = req.body;
     if (!url || typeof url !== 'string') {
-      res.status(400).json({ success: false, message: 'Vui lòng cung cấp link TikTok hoặc Douyin hợp lệ' });
+      res
+        .status(400)
+        .json({ success: false, message: 'Vui lòng cung cấp link TikTok hoặc Douyin hợp lệ' });
       return;
     }
-
     const trimmedUrl = url.trim();
     const cleanTargetUrl = extractCleanUrl(trimmedUrl);
     const isDouyin = isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
     const isTikTok = isTikTokUrl(cleanTargetUrl) || isTikTokUrl(trimmedUrl);
 
     if (!isDouyin && !isTikTok) {
-      // Check if text contains a link to either platform
       const hasDouyin = /douyin\.com|iesdouyin\.com/.test(trimmedUrl);
       const hasTikTok = /tiktok\.com/.test(trimmedUrl);
       if (!hasDouyin && !hasTikTok) {
         res.status(400).json({
           success: false,
-          message: 'URL không thuộc nền tảng TikTok hoặc Douyin. Vui lòng kiểm tra lại liên kết.',
+          message: 'URL không thuộc TikTok hoặc Douyin. Vui lòng kiểm tra lại liên kết.',
         });
         return;
       }
     }
 
-    // Resolve shortlink if needed (e.g. v.douyin.com, vt.tiktok.com)
     const resolvedUrl = await resolveFinalUrl(cleanTargetUrl || trimmedUrl);
-    const targetIsDouyin = isDouyinUrl(resolvedUrl) || isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
+    const targetIsDouyin =
+      isDouyinUrl(resolvedUrl) || isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
 
     if (targetIsDouyin) {
-      const cleanUrl = extractCleanUrl(trimmedUrl) || trimmedUrl;
-
-      // 1. Thử qua Cloudflare Worker trước
-      try {
-        const workerData = await fetchFromCloudflareWorker(cleanUrl);
-        if (workerData && (workerData.video?.noWatermark || workerData.images?.length > 0)) {
-          return res.json({ success: true, data: workerData });
-        }
-      } catch (workerErr) {
-        console.warn('Cloudflare Worker failover:', workerErr);
+      const douyinData = await extractFromDouyin(cleanTargetUrl || trimmedUrl, resolvedUrl);
+      if (douyinData && (douyinData.video?.noWatermark || douyinData.images?.length > 0)) {
+        return res.json({ success: true, data: douyinData });
       }
-
-      // 2. Thử Tầng Mobile HTML Scrape
-      try {
-        let awemeId = extractDouyinId(cleanUrl);
-        if (!awemeId) {
-          const resolved = await resolveFinalUrl(cleanUrl);
-          awemeId = extractDouyinId(resolved);
-        }
-        if (awemeId) {
-          const htmlData = await extractDouyinMobileHtml(awemeId, cleanUrl);
-          if (htmlData && (htmlData.video?.noWatermark || htmlData.images?.length > 0)) {
-            return res.json({ success: true, data: htmlData });
-          }
-
-          const ssrData = await extractDouyinMobileSSR(awemeId, cleanUrl);
-          if (ssrData && (ssrData.video?.noWatermark || ssrData.images?.length > 0)) {
-            return res.json({ success: true, data: ssrData });
-          }
-        }
-      } catch (htmlErr) {
-        console.warn('Mobile HTML Scrape thất bại:', htmlErr);
-      }
-
-      // 3. Cứu cánh Tầng 3: TikWM Engine (Hỗ trợ tốt v.douyin.com)
-      try {
-        const tikwmData = await extractFromTikWM(cleanUrl);
-        if (tikwmData && (tikwmData.play || (Array.isArray(tikwmData.images) && tikwmData.images.length > 0))) {
-          const isPhotoSlide = Array.isArray(tikwmData.images) && tikwmData.images.length > 0;
-          const mediaType = isPhotoSlide ? 'photos' : 'video';
-          const result = {
-            id: String(tikwmData.id || extractDouyinId(cleanUrl) || Date.now()),
-            url: resolvedUrl || cleanUrl,
-            title: tikwmData.title || 'Douyin Media',
-            mediaType,
-            cover: normalizeMediaUrl(tikwmData.cover || tikwmData.origin_cover),
-            duration: tikwmData.duration || 0,
-            createdAt: tikwmData.create_time ? new Date(tikwmData.create_time * 1000).toISOString() : new Date().toISOString(),
-            author: {
-              id: String(tikwmData.author?.id || ''),
-              uniqueId: tikwmData.author?.unique_id || 'douyin_user',
-              nickname: tikwmData.author?.nickname || 'Douyin Creator',
-              avatar: normalizeMediaUrl(tikwmData.author?.avatar),
-            },
-            stats: {
-              plays: tikwmData.play_count || 0,
-              likes: tikwmData.digg_count || 0,
-              comments: tikwmData.comment_count || 0,
-              shares: tikwmData.share_count || 0,
-              downloads: tikwmData.download_count || 0,
-            },
-            video: {
-              noWatermark: normalizeMediaUrl(tikwmData.play),
-              hd: normalizeMediaUrl(tikwmData.hdplay || tikwmData.play),
-              watermark: normalizeMediaUrl(tikwmData.wmplay),
-              size: tikwmData.size || 0,
-              hdSize: tikwmData.hd_size || 0,
-              backupUrls: [
-                normalizeMediaUrl(tikwmData.hdplay),
-                normalizeMediaUrl(tikwmData.play),
-                normalizeMediaUrl(tikwmData.wmplay),
-              ].filter(Boolean),
-            },
-            audio: {
-              id: String(tikwmData.music_info?.id || ''),
-              title: tikwmData.music_info?.title || tikwmData.music || 'Âm thanh Douyin',
-              author: tikwmData.music_info?.author || tikwmData.author?.nickname || '',
-              url: normalizeMediaUrl(tikwmData.music || tikwmData.music_info?.play || ''),
-              duration: tikwmData.music_info?.duration || 0,
-            },
-            images: isPhotoSlide ? (tikwmData.images || []).map((img: string) => normalizeMediaUrl(img)) : [],
-            platform: 'douyin' as const,
-          };
-          return res.json({ success: true, data: result });
-        }
-      } catch (tikwmErr) {
-        console.warn('TikWM fallback thất bại:', tikwmErr);
-      }
-
-      // Tầng cứu hộ phụ trợ: Native WARP API
-      const fallbackAwemeId = extractDouyinId(cleanUrl) || extractDouyinId(resolvedUrl);
-      if (fallbackAwemeId) {
-        try {
-          const warpNativeData = await extractDouyinNativeApiWarp(fallbackAwemeId, resolvedUrl || cleanUrl);
-          if (warpNativeData) {
-            return res.json({ success: true, data: warpNativeData });
-          }
-        } catch (warpErr) {
-          console.warn('Douyin Tier 4 (Native WARP API) failed:', warpErr);
-        }
-      }
-
-      // Nếu cả các tầng đều không lấy được
       return res.status(422).json({
         success: false,
-        message: 'Không thể trích xuất dữ liệu từ video/bài viết Douyin. Vui lòng kiểm tra lại liên kết hoặc thử lại sau vài giây.',
+        message:
+          'Không thể trích xuất video/bài viết Douyin. Vui lòng kiểm tra lại liên kết hoặc thử lại sau vài giây.',
       });
     }
 
-    // TikTok extraction pipeline:
-    // Tier 1: Direct official ByteDance mobile feed API (fastest, pristine quality, no watermark)
-    // Tier 2: TikWM API with multiple fallback mirrors (rich metadata, full stats, HD video)
-    // Tier 3: SSSTik high-speed engine (watermark-free CDN mirrors)
-    // Tier 4: MusicalDown engine
-    // Tier 5: oEmbed metadata fallback
+    // TikTok Pipeline
     try {
       const tiktokId = extractTikTokId(resolvedUrl) || extractTikTokId(trimmedUrl);
-
-      // Tier 1: Direct official ByteDance mobile feed API (Strict aweme_id check)
       if (tiktokId) {
         try {
           const aweme = await extractTikTokOfficial(tiktokId);
           if (aweme && String(aweme.aweme_id) === String(tiktokId)) {
             const isPhotoSlide = Boolean(
               (aweme.image_post_info?.images && aweme.image_post_info.images.length > 0) ||
-              (aweme.images && aweme.images.length > 0)
+                (aweme.images && aweme.images.length > 0)
             );
             const rawImages = aweme.image_post_info?.images || aweme.images || [];
             const images = rawImages
               .map((img: any) =>
                 normalizeMediaUrl(
                   img.display_image?.url_list?.[0] ||
-                  img.owner_watermark_image?.url_list?.[0] ||
-                  img.user_watermark_image?.url_list?.[0] ||
-                  img.url_list?.[0] ||
-                  img
+                    img.owner_watermark_image?.url_list?.[0] ||
+                    img.user_watermark_image?.url_list?.[0] ||
+                    img.url_list?.[0] ||
+                    img
                 )
               )
               .filter(Boolean);
@@ -1519,8 +1069,8 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
                 nickname: aweme.author?.nickname || 'TikTok Creator',
                 avatar: normalizeMediaUrl(
                   aweme.author?.avatar_thumb?.url_list?.[0] ||
-                  aweme.author?.avatar_medium?.url_list?.[0] ||
-                  ''
+                    aweme.author?.avatar_medium?.url_list?.[0] ||
+                    ''
                 ),
               },
               stats: {
@@ -1548,22 +1098,15 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
               images: isPhotoSlide ? images : [],
               platform: 'tiktok' as const,
             };
-
-            res.json({ success: true, data: result });
-            return;
+            return res.json({ success: true, data: result });
           }
-        } catch (officialErr: any) {
-          console.warn('Official TikTok feed extraction failed:', officialErr?.message || officialErr);
-        }
+        } catch {}
       }
 
-      // Tier 2: TikWM Extractor (with mirror failover & rich metadata: stats, author info, HD quality)
       let data: any = null;
       try {
         data = await extractFromTikWM(resolvedUrl);
-      } catch (tikwmErr: any) {
-        console.warn('TikWM primary extraction attempt failed:', tikwmErr?.message || tikwmErr);
-      }
+      } catch {}
 
       if (
         data &&
@@ -1572,17 +1115,26 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
       ) {
         const isPhotoSlide = Array.isArray(data.images) && data.images.length > 0;
         const mediaType = isPhotoSlide ? 'photos' : 'video';
-
-        // Extract direct CDN audio stream
         let rawAudioUrl = '';
-        if (data.music_info?.play && typeof data.music_info.play === 'string' && data.music_info.play.startsWith('http')) {
+        if (
+          data.music_info?.play &&
+          typeof data.music_info.play === 'string' &&
+          data.music_info.play.startsWith('http')
+        ) {
           rawAudioUrl = data.music_info.play;
-        } else if (isPhotoSlide && data.play && typeof data.play === 'string' && data.play.startsWith('http')) {
+        } else if (
+          isPhotoSlide &&
+          data.play &&
+          typeof data.play === 'string' &&
+          data.play.startsWith('http')
+        ) {
           rawAudioUrl = data.play;
         } else if (data.music && typeof data.music === 'string' && data.music.startsWith('http')) {
           rawAudioUrl = data.music;
         } else {
-          rawAudioUrl = normalizeMediaUrl(data.music || data.music_info?.play || (isPhotoSlide ? data.play : ''));
+          rawAudioUrl = normalizeMediaUrl(
+            data.music || data.music_info?.play || (isPhotoSlide ? data.play : '')
+          );
         }
 
         const result = {
@@ -1592,7 +1144,9 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
           mediaType,
           cover: normalizeMediaUrl(data.cover || data.origin_cover),
           duration: data.duration || 0,
-          createdAt: data.create_time ? new Date(data.create_time * 1000).toISOString() : new Date().toISOString(),
+          createdAt: data.create_time
+            ? new Date(data.create_time * 1000).toISOString()
+            : new Date().toISOString(),
           author: {
             id: String(data.author?.id || ''),
             uniqueId: data.author?.unique_id || 'tiktok_user',
@@ -1628,12 +1182,9 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
           images: isPhotoSlide ? (data.images || []).map((img: string) => normalizeMediaUrl(img)) : [],
           platform: 'tiktok' as const,
         };
-
-        res.json({ success: true, data: result });
-        return;
+        return res.json({ success: true, data: result });
       }
 
-      // Tier 3: SSSTik High-Speed Extractor (reliable fallback)
       try {
         const sssData = await extractFromSSSTik(resolvedUrl);
         if (sssData && (sssData.video || sssData.images.length > 0)) {
@@ -1671,172 +1222,23 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
             images: sssData.images.map((img) => normalizeMediaUrl(img)),
             platform: 'tiktok' as const,
           };
-
-          res.json({ success: true, data: result });
-          return;
+          return res.json({ success: true, data: result });
         }
-      } catch (sssErr: any) {
-        console.warn('SSSTik secondary extraction failed:', sssErr?.message || sssErr);
-      }
+      } catch {}
 
-      // Tier 4: High-speed extraction via MusicalDown
-      try {
-        const mdData = await extractFromMusicalDown(resolvedUrl);
-        if (mdData && (mdData.videoHd || mdData.videoNoWm || mdData.audioUrl)) {
-          const result = {
-            id: String(Date.now()),
-            url: resolvedUrl,
-            title: mdData.title || 'TikTok Media',
-            mediaType: 'video' as const,
-            cover: mdData.cover || '',
-            duration: 0,
-            createdAt: new Date().toISOString(),
-            author: {
-              id: '',
-              uniqueId: mdData.author || 'tiktok_user',
-              nickname: mdData.author || 'TikTok Creator',
-              avatar: '',
-            },
-            stats: {
-              plays: 0,
-              likes: 0,
-              comments: 0,
-              shares: 0,
-              downloads: 0,
-            },
-            video: {
-              noWatermark: mdData.videoNoWm,
-              hd: mdData.videoHd,
-              watermark: '',
-              size: 0,
-              hdSize: 0,
-              backupUrls: [mdData.videoHd, mdData.videoNoWm].filter(Boolean),
-            },
-            audio: {
-              id: '',
-              title: mdData.title ? `Audio - ${mdData.title.slice(0, 30)}` : 'Âm thanh TikTok',
-              author: mdData.author,
-              url: mdData.audioUrl,
-              duration: 0,
-            },
-            images: [],
-            platform: 'tiktok' as const,
-          };
-
-          res.json({ success: true, data: result });
-          return;
-        }
-      } catch (mdErr: any) {
-        console.warn('MusicalDown tertiary extraction failed:', mdErr?.message || mdErr);
-      }
-
-      // Tier 5: Tiklydown fallback
-      try {
-        const tiklyData = await extractFromTiklydown(resolvedUrl);
-        if (tiklyData) {
-          res.json({ success: true, data: { ...tiklyData, platform: 'tiktok' as const } });
-          return;
-        }
-      } catch (tiklyErr: any) {
-        console.warn('Tiklydown fallback failed:', tiklyErr?.message || tiklyErr);
-      }
-
-      // Tier 6: Fallback to oEmbed if scrapers are temporarily protected
-      const oembed = await extractOEmbedInfo(resolvedUrl);
-      if (oembed) {
-        res.json({
-          success: true,
-          data: {
-            id: String(Date.now()),
-            url: resolvedUrl,
-            title: oembed.title || 'TikTok Post',
-            mediaType: 'video',
-            cover: oembed.thumbnail_url || '',
-            duration: 0,
-            createdAt: new Date().toISOString(),
-            author: {
-              id: '',
-              uniqueId: oembed.author_unique_id || oembed.author_name?.replace(/\s+/g, '_') || 'tiktok_user',
-              nickname: oembed.author_name || 'TikTok Creator',
-              avatar: '',
-            },
-            stats: { plays: 0, likes: 0, comments: 0, shares: 0, downloads: 0 },
-            video: { noWatermark: '', hd: '', watermark: '', size: 0, hdSize: 0, backupUrls: [] },
-            audio: { id: '', title: '', author: '', url: '', duration: 0 },
-            images: [],
-            platform: 'tiktok',
-            isPartial: true,
-            warning: 'Máy chủ TikTok đang bảo vệ đường truyền trực tiếp. Bạn có thể thử lại sau vài giây.',
-          },
-        });
-        return;
-      }
-
-      throw new Error('Không thể lấy thông tin video TikTok. Vui lòng kiểm tra lại liên kết hoặc thử lại.');
+      throw new Error('Không tìm thấy thông tin video TikTok. Vui lòng kiểm tra lại liên kết.');
     } catch (primaryError: any) {
-      console.error('TikTok extraction error:', primaryError?.message || primaryError);
-      const msg = primaryError?.message || 'Lỗi khi trích xuất thông tin media. Vui lòng kiểm tra lại link.';
-      res.status(422).json({
-        success: false,
-        error: msg,
-        message: msg,
-      });
+      const msg =
+        primaryError?.message || 'Lỗi khi trích xuất thông tin media. Vui lòng kiểm tra lại link.';
+      res.status(422).json({ success: false, error: msg, message: msg });
       return;
     }
   } catch (error: any) {
-    console.error('Extraction error:', error);
     const msg = error?.message || 'Lỗi khi trích xuất thông tin media. Vui lòng kiểm tra lại link.';
-    res.status(422).json({
-      success: false,
-      error: msg,
-      message: msg,
-    });
+    res.status(422).json({ success: false, error: msg, message: msg });
   }
 });
 
-// Helper to perform fetch with a timeout that ONLY applies to connection and header reception,
-// ensuring the returned streaming response body is not prematurely aborted during prolonged download.
-async function fetchWithConnectTimeout(
-  url: string,
-  options: any = {},
-  connectTimeoutMs = 8000
-): Promise<any> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, connectTimeoutMs);
-
-  const fetchOptions: any = {
-    ...options,
-    signal: controller.signal,
-  };
-
-  // Try WARP Proxy Agent first if available
-  if (warpAgent) {
-    try {
-      const res = await (fetch as any)(url, {
-        ...fetchOptions,
-        dispatcher: warpAgent,
-        agent: warpAgent,
-      });
-      clearTimeout(timer);
-      return res;
-    } catch {
-      // Fallback to direct fetch
-    }
-  }
-
-  try {
-    const res = await (fetch as any)(url, fetchOptions);
-    clearTimeout(timer);
-    return res;
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
-  }
-}
-
-// Helper to verify that upstream response is a genuine media stream and not an HTML captcha / error snippet
 function isValidMediaResponse(res: globalThis.Response | null): boolean {
   if (!res || (!res.ok && res.status !== 206)) return false;
   const ct = (res.headers.get('content-type') || '').toLowerCase();
@@ -1850,18 +1252,49 @@ function isValidMediaResponse(res: globalThis.Response | null): boolean {
   return true;
 }
 
-// Helper to safely fetch media from CDN with deep redirect support, fallback strategies and varied headers
+async function fetchWithConnectTimeout(
+  url: string,
+  options: any = {},
+  connectTimeoutMs = 8000
+): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, connectTimeoutMs);
+  const fetchOptions: any = {
+    ...options,
+    signal: controller.signal,
+  };
+  if (warpAgent) {
+    try {
+      const res = await (fetch as any)(url, {
+        ...fetchOptions,
+        dispatcher: warpAgent,
+        agent: warpAgent,
+      });
+      clearTimeout(timer);
+      return res;
+    } catch {}
+  }
+  try {
+    const res = await (fetch as any)(url, fetchOptions);
+    clearTimeout(timer);
+    return res;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 async function fetchMediaWithRetry(
   targetUrl: string,
   options: { isDouyin: boolean; range?: string }
 ): Promise<globalThis.Response | null> {
   const url = normalizeMediaUrl(targetUrl);
   if (!url) return null;
-
   const userAgent = options.isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
   const referer = options.isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
 
-  // Get ttwid cookie if Douyin
   let cookieHeader = '';
   if (options.isDouyin) {
     try {
@@ -1869,12 +1302,9 @@ async function fetchMediaWithRetry(
       if (ttwid) {
         cookieHeader = `ttwid=${ttwid};`;
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
-  // Candidate URL variations (playwm vs play for Douyin)
   const candidateUrls: string[] = [url];
   if (options.isDouyin) {
     if (url.includes('playwm')) {
@@ -1888,7 +1318,6 @@ async function fetchMediaWithRetry(
 
   const CONNECT_TIMEOUT = 8000;
 
-  // Helper to follow redirects up to maxHops preserving appropriate headers
   const followAndFetch = async (
     startUrl: string,
     reqHeaders: Record<string, string>,
@@ -1902,7 +1331,13 @@ async function fetchMediaWithRetry(
           { method: 'GET', headers: reqHeaders, redirect: 'manual' },
           CONNECT_TIMEOUT
         );
-        if (res.status === 301 || res.status === 302 || res.status === 303 || res.status === 307 || res.status === 308) {
+        if (
+          res.status === 301 ||
+          res.status === 302 ||
+          res.status === 303 ||
+          res.status === 307 ||
+          res.status === 308
+        ) {
           const loc = res.headers.get('location');
           if (loc) {
             currentUrl = loc.startsWith('http') ? loc : new URL(loc, currentUrl).toString();
@@ -1921,10 +1356,10 @@ async function fetchMediaWithRetry(
   };
 
   for (const candidate of candidateUrls) {
-    const isCdnUrl = /douyinvod\.com|zjcdn\.com|byteimg\.com|snssdk\.com|ixigua\.com|pstatp\.com/i.test(candidate);
+    const isCdnUrl =
+      /douyinvod\.com|zjcdn\.com|byteimg\.com|snssdk\.com|ixigua\.com|pstatp\.com/i.test(candidate);
     const candidateCookie = isCdnUrl ? '' : cookieHeader;
 
-    // Tối ưu tải video lớn: Tắt Referer cho toàn bộ link CDN Douyin
     if (isCdnUrl) {
       try {
         const headers: Record<string, string> = {
@@ -1935,13 +1370,12 @@ async function fetchMediaWithRetry(
         const res = await fetchWithConnectTimeout(
           candidate,
           { method: 'GET', headers, redirect: 'follow' },
-          15000 // Tăng timeout kết nối lên 15 giây cho video dài
+          15000
         );
         if (isValidMediaResponse(res)) return res;
       } catch {}
     }
 
-    // Strategy 1: Standard GET with Platform Headers (Referer, UA, Cookie, Range) & Deep Redirect Follow
     try {
       const headers: Record<string, string> = {
         'User-Agent': userAgent,
@@ -1952,11 +1386,8 @@ async function fetchMediaWithRetry(
       if (options.range) headers['Range'] = options.range;
       const res = await followAndFetch(candidate, headers, 8);
       if (res) return res;
-    } catch {
-      // try next
-    }
+    } catch {}
 
-    // Strategy 2: Direct request without Referer header (bypasses CDN referer blocks)
     try {
       const headers: Record<string, string> = {
         'User-Agent': userAgent,
@@ -1965,11 +1396,8 @@ async function fetchMediaWithRetry(
       if (options.range) headers['Range'] = options.range;
       const res = await followAndFetch(candidate, headers, 8);
       if (res) return res;
-    } catch {
-      // try next
-    }
+    } catch {}
 
-    // Strategy 3: Request with Range (supports requested range or fallback bytes=0-)
     try {
       const headers: Record<string, string> = {
         'User-Agent': userAgent,
@@ -1980,11 +1408,8 @@ async function fetchMediaWithRetry(
       if (candidateCookie) headers['Cookie'] = candidateCookie;
       const res = await followAndFetch(candidate, headers, 8);
       if (res) return res;
-    } catch {
-      // try next
-    }
+    } catch {}
 
-    // Strategy 4: Native redirect: 'follow'
     try {
       const headers: Record<string, string> = {
         'User-Agent': userAgent,
@@ -1997,30 +1422,22 @@ async function fetchMediaWithRetry(
         CONNECT_TIMEOUT
       );
       if (isValidMediaResponse(res)) return res;
-    } catch {
-      // try next candidate
-    }
+    } catch {}
   }
-
   return null;
 }
 
-// Stream redirect endpoint: redirects to /api/tiktok/download proxy stream to prevent 403 CDN hotlinking blocks
 app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
   const filename = String(req.query.filename || 'media.mp4').trim();
-
   if (!rawUrl) {
-    res.status(400).send('Thiếu liên kết tải');
+    res.status(400).send('Thiếu liên kết');
     return;
   }
-
   const downloadUrl = `/api/tiktok/download?url=${encodeURIComponent(rawUrl)}&filename=${encodeURIComponent(filename)}`;
   res.redirect(302, downloadUrl);
 });
 
-// Proxy stream download endpoint (solves CORS & enforces proper attachment filename)
-// Supports both GET and POST to handle long query strings without truncation
 app.all('/api/tiktok/download', async (req: Request, res: Response) => {
   try {
     const rawUrl = ((req.query.url || req.body?.url) as string) || '';
@@ -2034,7 +1451,7 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
       : [];
 
     if (!rawUrl && !fallbackUrl && !postUrl && backupUrls.length === 0) {
-      res.status(400).json({ success: false, error: 'Thiếu tham số liên kết tải' });
+      res.status(400).json({ success: false, error: 'Thiếu tham số liên kết' });
       return;
     }
 
@@ -2056,18 +1473,15 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
     const isDouyin = checkIsDouyin(rawUrl || '') || checkIsDouyin(postUrl || '');
     const requestedRange = req.headers.range as string | undefined;
 
-    // Step 1: Try primary URL
     let mediaResponse: globalThis.Response | null = null;
     if (rawUrl) {
       mediaResponse = await fetchMediaWithRetry(rawUrl, { isDouyin, range: requestedRange });
     }
 
-    // Step 2: Try fallback URL if primary failed
     if (!isValidMediaResponse(mediaResponse) && fallbackUrl && fallbackUrl !== rawUrl) {
       mediaResponse = await fetchMediaWithRetry(fallbackUrl, { isDouyin, range: requestedRange });
     }
 
-    // Step 3: Try backup CDN mirrors if provided
     if (!isValidMediaResponse(mediaResponse) && backupUrls.length > 0) {
       for (const backup of backupUrls.slice(0, 5)) {
         if (backup && backup !== rawUrl && backup !== fallbackUrl) {
@@ -2077,8 +1491,6 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
       }
     }
 
-    // Step 4: If previous attempts failed (e.g. signed CDN token expired) and postUrl is present,
-    // re-extract fresh unexpired media URLs on the server
     if (!isValidMediaResponse(mediaResponse) && postUrl) {
       try {
         if (isDouyin) {
@@ -2088,62 +1500,26 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
               ? freshData.audio?.url
               : freshData.video?.hd || freshData.video?.noWatermark;
             if (freshUrl) {
-              mediaResponse = await fetchMediaWithRetry(freshUrl, { isDouyin: true, range: requestedRange });
-            }
-          }
-        } else {
-          const tiktokId = extractTikTokId(postUrl);
-          if (tiktokId) {
-            const aweme = await extractTikTokOfficial(tiktokId);
-            if (aweme) {
-              const freshUrl = requestedFilename.endsWith('.mp3')
-                ? aweme.music?.play_url?.url_list?.[0]
-                : aweme.video?.bit_rate?.[0]?.play_addr?.url_list?.[0] || aweme.video?.play_addr?.url_list?.[0];
-              if (freshUrl) {
-                mediaResponse = await fetchMediaWithRetry(freshUrl, { isDouyin: false, range: requestedRange });
-              }
-            }
-          }
-          if (!isValidMediaResponse(mediaResponse)) {
-            const sssData = await extractFromSSSTik(postUrl);
-            if (sssData) {
-              const freshUrl = requestedFilename.endsWith('.mp3') ? sssData.music : sssData.video;
-              if (freshUrl) {
-                mediaResponse = await fetchMediaWithRetry(freshUrl, { isDouyin: false, range: requestedRange });
-              }
-            }
-          }
-          if (!isValidMediaResponse(mediaResponse)) {
-            const tikwmData = await extractFromTikWM(postUrl);
-            if (tikwmData) {
-              const freshUrl = requestedFilename.endsWith('.mp3')
-                ? tikwmData.music
-                : tikwmData.hdplay || tikwmData.play;
-              if (freshUrl) {
-                mediaResponse = await fetchMediaWithRetry(freshUrl, { isDouyin: false, range: requestedRange });
-              }
+              mediaResponse = await fetchMediaWithRetry(freshUrl, {
+                isDouyin: true,
+                range: requestedRange,
+              });
             }
           }
         }
-      } catch {
-        // ignore fallback extraction failure
-      }
+      } catch {}
     }
 
-    // Fast-fail: If server proxy cannot connect upstream
     if (!isValidMediaResponse(mediaResponse) || !mediaResponse) {
-      const errMsg = 'Máy chủ nguồn giới hạn luồng tải qua proxy hoặc đường dẫn đã hết hạn. Vui lòng tải lại trang hoặc thử liên kết khác.';
-      res.status(502).json({
-        success: false,
-        fallbackToDirect: true,
-        error: errMsg,
-        message: errMsg,
-      });
+      const errMsg =
+        'Máy chủ nguồn tạm chặn luồng tải. Vui lòng thử lại sau vài giây hoặc dùng link tải trực tiếp.';
+      res.status(502).json({ success: false, fallbackToDirect: true, error: errMsg, message: errMsg });
       return;
     }
 
-    // Clean filename
-    const safeFilename = requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'media.mp4';
+    const safeFilename =
+      requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() ||
+      'media.mp4';
     const encodedFilename = encodeURIComponent(requestedFilename);
 
     let contentType = mediaResponse.headers.get('content-type') || 'application/octet-stream';
@@ -2157,7 +1533,6 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
       contentType = 'image/png';
     }
 
-    // Handle HEAD request (pre-flight checks from mobile download managers)
     if (req.method === 'HEAD') {
       res.setHeader('Content-Type', contentType);
       res.setHeader(
@@ -2172,8 +1547,6 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
       return;
     }
 
-    // DIRECT STREAMING PIPELINE:
-    // Sends HTTP headers immediately so Time-To-First-Byte is < 200ms.
     if (mediaResponse.body) {
       try {
         res.setHeader('Content-Type', contentType);
@@ -2184,12 +1557,13 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Cache-Control', 'public, max-age=3600');
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Expose-Headers', 'Content-Length, X-Content-Length, Content-Disposition');
+        res.setHeader(
+          'Access-Control-Expose-Headers',
+          'Content-Length, X-Content-Length, Content-Disposition'
+        );
 
         const upstreamLength = mediaResponse.headers.get('content-length');
         const contentEncoding = mediaResponse.headers.get('content-encoding');
-        // Only set Content-Length if there is no content encoding (like gzip)
-        // because Node fetch decompresses automatically, which would cause a Content-Length mismatch
         if (!contentEncoding && upstreamLength && Number(upstreamLength) > 0) {
           res.setHeader('Content-Length', upstreamLength);
           res.setHeader('X-Content-Length', upstreamLength);
@@ -2205,7 +1579,6 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
           res.status(200);
         }
 
-        // Ngắt stream ngay nếu client hủy kết nối giữa chừng để giải phóng socket và RAM
         req.on('close', () => {
           if (!res.writableEnded) {
             res.end();
@@ -2231,8 +1604,8 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
       if (!res.headersSent) {
         res.status(502).json({
           success: false,
-          error: 'Luồng dữ liệu không khả dụng từ máy chủ nguồn.',
-          message: 'Luồng dữ liệu không khả dụng từ máy chủ nguồn.',
+          error: 'Luồng dữ liệu không hợp lệ từ máy chủ nguồn.',
+          message: 'Luồng dữ liệu không hợp lệ từ máy chủ nguồn.',
         });
       } else if (!res.writableEnded) {
         res.end();
@@ -2240,38 +1613,29 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
       return;
     }
   } catch (err: any) {
-    console.error('Download proxy error:', err);
     if (!res.headersSent) {
-      const errMsg = 'Lỗi trong quá trình kết nối tải xuống tệp phương tiện. Vui lòng thử lại sau giây lát.';
-      res.status(502).json({
-        success: false,
-        error: errMsg,
-        message: errMsg,
-      });
+      const errMsg = 'Lỗi trong quá trình tải xuống tập tin phương tiện.';
+      res.status(502).json({ success: false, error: errMsg, message: errMsg });
     } else if (!res.writableEnded) {
       res.end();
     }
   }
 });
 
-// Create organized ZIP archive with custom folder hierarchy
 app.post('/api/tiktok/bundle-zip', async (req: Request, res: Response) => {
   try {
     const { items, zipName } = req.body as {
       items: Array<{ url: string; relativePath: string }>;
       zipName?: string;
     };
-
     if (!Array.isArray(items) || items.length === 0) {
-      const msg = 'Danh sách tệp tải rỗng';
+      const msg = 'Danh sách tệp trống';
       res.status(400).json({ success: false, error: msg, message: msg });
       return;
     }
-
     const zip = new JSZip();
     const finalZipName = (zipName || 'snaptikdou_bundle.zip').replace(/[^\w\d_.-]/gi, '_');
 
-    // Fetch and place each item into its exact folder hierarchy
     const downloadPromises = items.map(async (item) => {
       try {
         const normalizedUrl = normalizeMediaUrl(item.url);
@@ -2284,9 +1648,7 @@ app.post('/api/tiktok/bundle-zip', async (req: Request, res: Response) => {
           normalizedUrl.includes('douyin.com') ||
           normalizedUrl.includes('bytedance.com') ||
           normalizedUrl.includes('snssdk.com');
-
         const fetchRes = await fetchMediaWithRetry(normalizedUrl, { isDouyin: isDouyinItem });
-
         if (fetchRes && fetchRes.ok) {
           const buffer = await fetchRes.arrayBuffer();
           const normalizedPath = item.relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
@@ -2298,25 +1660,21 @@ app.post('/api/tiktok/bundle-zip', async (req: Request, res: Response) => {
     });
 
     await Promise.all(downloadPromises);
-
     const zipContent = await zip.generateAsync({
       type: 'nodebuffer',
       compression: 'DEFLATE',
       compressionOptions: { level: 6 },
     });
-
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${finalZipName}"`);
     res.setHeader('Content-Length', zipContent.length.toString());
     res.send(zipContent);
   } catch (error: any) {
-    console.error('Bundle zip error:', error);
     const errMsg = error?.message || 'Lỗi khi đóng gói file ZIP';
     res.status(422).json({ success: false, error: errMsg, message: errMsg });
   }
 });
 
-// Process-level handlers to prevent container crashes on unexpected socket resets
 process.on('unhandledRejection', (reason) => {
   console.warn('Process caught unhandled rejection:', reason);
 });
@@ -2324,16 +1682,10 @@ process.on('uncaughtException', (err) => {
   console.error('Process caught uncaught exception:', err);
 });
 
-// Global Express error handler to prevent HTML 500 responses
 app.use((err: any, _req: Request, res: Response, _next: any) => {
-  console.error('Unhandled server error:', err);
   if (!res.headersSent) {
-    const msg = err?.message || 'Đã xảy ra lỗi máy chủ nội bộ. Vui lòng thử lại.';
-    res.status(500).json({
-      success: false,
-      error: msg,
-      message: msg,
-    });
+    const msg = err?.message || 'Đã xảy ra lỗi máy chủ. Vui lòng thử lại.';
+    res.status(500).json({ success: false, error: msg, message: msg });
   } else if (!res.writableEnded) {
     res.end();
   }
@@ -2354,9 +1706,7 @@ async function startServer() {
     });
   }
 
-  // Fallback error handler after Vite
   app.use((err: any, _req: Request, res: Response, _next: any) => {
-    console.error('Vite / SPA middleware error:', err);
     if (!res.headersSent) {
       res.status(500).json({ success: false, error: err?.message || 'Server error' });
     } else if (!res.writableEnded) {
