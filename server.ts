@@ -17,7 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 const CLOUDFLARE_WORKER_URL =
   process.env.CLOUDFLARE_WORKER_URL || 'https://douyin-resolver.changlucky7777.workers.dev';
 const CLOUDFLARE_AUTH_TOKEN =
-  process.env.WORKER_AUTH_TOKEN || 'k8dF92mZx2026Secure';
+  process.env.WORKER_AUTH_TOKEN || '';
 
 const TIKTOK_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
