@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Trash2,
   Download,
@@ -44,6 +45,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
   onReDownload,
   theme = 'dark',
 }) => {
+  const { t } = useTranslation();
   const isLight = theme === 'light';
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'video' | 'audio' | 'photos'>('all');
@@ -84,7 +86,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
               }`}
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Xóa lịch sử</span>
+              <span>{t('btnClearHistory')}</span>
             </button>
           </div>
         )}
@@ -97,7 +99,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
             }`}
           >
             <div className={`text-xs ${isLight ? 'text-slate-500 font-medium' : 'text-slate-400'}`}>
-              Tổng lượt tải
+              {t('statTotalDownloads')}
             </div>
             <div className={`text-lg font-extrabold mt-0.5 ${isLight ? 'text-slate-900' : 'text-white'}`}>
               {records.length}
@@ -109,7 +111,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
             }`}
           >
             <div className={`text-xs ${isLight ? 'text-slate-500 font-medium' : 'text-slate-400'}`}>
-              Kênh đã lưu
+              {t('statSavedChannels')}
             </div>
             <div className={`text-lg font-extrabold mt-0.5 ${isLight ? 'text-pink-600' : 'text-pink-400'}`}>
               {uniqueChannels.length}
@@ -121,7 +123,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
             }`}
           >
             <div className={`text-xs ${isLight ? 'text-slate-500 font-medium' : 'text-slate-400'}`}>
-              Video
+              {t('statVideos')}
             </div>
             <div className={`text-lg font-extrabold mt-0.5 ${isLight ? 'text-sky-600' : 'text-cyan-400'}`}>
               {records.filter((r) => r.mediaType === 'video').length}
@@ -133,7 +135,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
             }`}
           >
             <div className={`text-xs ${isLight ? 'text-slate-500 font-medium' : 'text-slate-400'}`}>
-              Photo Slide & Audio
+              {t('statPhotosAudio')}
             </div>
             <div className={`text-lg font-extrabold mt-0.5 ${isLight ? 'text-amber-600' : 'text-amber-400'}`}>
               {records.filter((r) => r.mediaType !== 'video').length}
@@ -151,7 +153,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm theo tên kênh, tiêu đề hoặc đường dẫn..."
+              placeholder={t('searchHistoryPlaceholder')}
               className={`w-full pl-10 pr-4 py-2 border rounded-xl text-xs transition-colors focus:outline-none focus:border-pink-500 ${
                 isLight
                   ? 'bg-white border-slate-200 text-slate-800 placeholder-slate-400 shadow-sm'
@@ -175,12 +177,12 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                 }`}
               >
                 {type === 'all'
-                  ? 'Tất cả'
+                  ? t('filterAll')
                   : type === 'video'
-                  ? 'Video'
+                  ? t('filterVideo')
                   : type === 'audio'
-                  ? 'Audio'
-                  : 'Photo Slide'}
+                  ? t('filterAudio')
+                  : t('filterPhoto')}
               </button>
             ))}
           </div>
@@ -307,7 +309,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
                   title="Tải lại file này"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Tải lại</span>
+                  <span>{t('btnRedownload')}</span>
                 </button>
               </div>
             </div>

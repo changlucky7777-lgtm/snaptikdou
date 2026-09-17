@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Header } from './components/Header';
+import { LanguageSelector } from './components/LanguageSelector';
 import { UrlInputBar } from './components/UrlInputBar';
 import { MediaResultCard, MediaResultCardSkeleton } from './components/MediaResultCard';
 import { HistorySection } from './components/HistorySection';
@@ -30,6 +32,7 @@ interface DirectDownloadInfo {
 }
 
 export default function App() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'download' | 'history'>('download');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window !== 'undefined') {
@@ -560,10 +563,10 @@ export default function App() {
                     SnapTikDou
                   </span>
                 </h1>
-                <p id="hero-subtitle" className={`text-[16px] leading-relaxed w-[341px] max-w-full mx-auto ${
+                <p id="hero-subtitle" className={`text-[16px] leading-relaxed max-w-2xl mx-auto ${
                   theme === 'light' ? 'text-slate-600' : 'text-slate-400'
                 }`}>
-                  Tải Video HD, nhạc Mp3 và Ảnh Slide trên TikTok & Douyin không dính Logo
+                  {t('sloganSub')}
                 </p>
               </div>
             )}

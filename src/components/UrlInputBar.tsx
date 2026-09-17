@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Search,
   X,
@@ -27,6 +28,7 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
   error,
   theme = 'dark',
 }) => {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [pasteNotice, setPasteNotice] = useState<string | null>(null);
   const [copiedError, setCopiedError] = useState(false);
@@ -151,7 +153,7 @@ targetUrl: ${url}
             onChange={(e) => setUrl(e.target.value)}
             onPaste={handleInputPaste}
             onKeyDown={handleKeyDown}
-            placeholder="Dán link TikTok hoặc Douyin (抖音) vào đây..."
+            placeholder={t('inputPlaceholder')}
             style={{
               height: '34px',
               marginLeft: '0px',
@@ -199,8 +201,8 @@ targetUrl: ${url}
           id="btn-paste-url"
           type="button"
           onClick={handlePaste}
-          style={{ height: '34px', width: '42.875px' }}
-          className={`flex items-center justify-center h-[34px] w-[42.875px] rounded-xl border border-solid transition-all shadow-sm touch-manipulation cursor-pointer select-none active:scale-95 shrink-0 text-xs font-semibold ${
+          style={{ height: '34px', minWidth: '44px' }}
+          className={`flex items-center justify-center h-[34px] px-3 rounded-xl border border-solid transition-all shadow-sm touch-manipulation cursor-pointer select-none active:scale-95 shrink-0 text-xs font-semibold ${
             theme === 'light'
               ? 'text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border-slate-300'
               : 'text-white bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border-slate-700 hover:border-slate-600'
@@ -208,31 +210,23 @@ targetUrl: ${url}
           title="Dán từ bộ nhớ tạm"
         >
           <span
-            style={{
-              width: '22.875px',
-              height: '16px',
-              paddingLeft: '0px',
-              paddingRight: '0px',
-              paddingTop: '0px',
-              paddingBottom: '0px',
-            }}
-            className={`inline-flex items-center justify-center ${
+            className={`inline-flex items-center justify-center whitespace-nowrap ${
               pasteNotice ? 'text-pink-500 font-bold' : (theme === 'light' ? 'text-slate-700' : 'text-slate-200')
             }`}
           >
-            {pasteNotice || 'Dán'}
+            {pasteNotice || t('btnPaste')}
           </span>
         </button>
       </div>
 
-      {/* Row 2: Extract button (width: 140px, centered) */}
+      {/* Row 2: Extract button (centered) */}
       <button
         id="btn-extract-tiktok"
         type="button"
         onClick={() => onExtract()}
         disabled={isLoading || !url.trim()}
-        style={{ width: '140px', backgroundColor: '#F1F5F9', borderRadius: '21px' }}
-        className={`w-[140px] py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all duration-200 whitespace-nowrap shadow-md touch-manipulation min-h-[40px] mx-auto ${
+        style={{ borderRadius: '21px' }}
+        className={`px-6 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all duration-200 whitespace-nowrap shadow-md touch-manipulation min-h-[40px] mx-auto ${
           isLoading || !url.trim()
             ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
             : 'bg-gradient-to-r from-pink-600 via-rose-600 to-pink-500 text-white hover:from-pink-500 hover:to-rose-500 shadow-pink-600/30 hover:scale-[1.02] active:scale-[0.98]'
@@ -241,12 +235,12 @@ targetUrl: ${url}
         {isLoading ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Đang xử lý...</span>
+            <span>{t('extracting')}</span>
           </>
         ) : (
           <>
             <Sparkles className="w-4 h-4" />
-            <span>Lấy link tải</span>
+            <span>{t('btnExtract')}</span>
           </>
         )}
       </button>
