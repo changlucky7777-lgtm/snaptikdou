@@ -4,19 +4,19 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 
 export interface LanguageItem {
   code: string;
+  country: string;
   name: string;
-  flag: string;
 }
 
 export const LANGUAGES: LanguageItem[] = [
-  { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
-  { code: 'en', name: 'English', flag: '🇺🇸' },
-  { code: 'zh', name: '中文 (简体)', flag: '🇨🇳' },
-  { code: 'es', name: 'Español', flag: '🇪🇸' },
-  { code: 'fr', name: 'Français', flag: '🇫🇷' },
-  { code: 'id', name: 'Bahasa Indonesia', flag: '🇮🇩' },
-  { code: 'ru', name: 'Русский', flag: '🇷🇺' },
-  { code: 'ar', name: 'العربية', flag: '🇸🇦' },
+  { code: 'vi', country: 'vn', name: 'Tiếng Việt' },
+  { code: 'en', country: 'us', name: 'English' },
+  { code: 'zh', country: 'cn', name: '中文 (简体)' },
+  { code: 'ar', country: 'sa', name: 'العربية' },
+  { code: 'es', country: 'es', name: 'Español' },
+  { code: 'fr', country: 'fr', name: 'Français' },
+  { code: 'id', country: 'id', name: 'Bahasa Indonesia' },
+  { code: 'ru', country: 'ru', name: 'Русский' },
 ];
 
 const resources = {
