@@ -5,10 +5,6 @@ import {
   X,
   Loader2,
   Sparkles,
-  AlertCircle,
-  Copy,
-  Check,
-  RotateCcw,
 } from 'lucide-react';
 
 interface UrlInputBarProps {
@@ -16,7 +12,6 @@ interface UrlInputBarProps {
   setUrl: (url: string) => void;
   onExtract: (targetUrl?: string) => void;
   isLoading: boolean;
-  error?: string | null;
   theme?: 'dark' | 'light';
 }
 
@@ -25,24 +20,11 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
   setUrl,
   onExtract,
   isLoading,
-  error,
   theme = 'dark',
 }) => {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [isPasted, setIsPasted] = useState(false);
-  const [copiedError, setCopiedError] = useState(false);
-
-  const handleCopyErrorForAI = () => {
-    const errorPrompt = `Fix the errors in the app
-[AIS_METADATA_SECTION_START]
-error: ${error || 'Unknown error'}
-targetUrl: ${url}
-[AIS_METADATA_SECTION_END]`;
-    navigator.clipboard.writeText(errorPrompt);
-    setCopiedError(true);
-    setTimeout(() => setCopiedError(false), 2000);
-  };
 
   // Instant 1-Touch Mobile & Desktop Paste Handler
   const handlePaste = async (e?: React.MouseEvent | React.TouchEvent) => {
@@ -244,54 +226,6 @@ targetUrl: ${url}
           </>
         )}
       </button>
-
-      {/* Error alert with Interactive Fix Button */}
-      {error && (
-        <div className="mt-3 p-3.5 sm:p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs sm:text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <div className="font-semibold text-red-200 flex items-center gap-1.5">
-                <span>{t('errorDetected')}</span>
-              </div>
-              <span className="text-red-300 text-xs leading-relaxed">{error}</span>
-            </div>
-          </div>
-
-          {/* Action buttons: Copy, Retry */}
-          <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
-            {/* Copy prompt for AI */}
-            <button
-              type="button"
-              onClick={handleCopyErrorForAI}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition cursor-pointer"
-              title="Sao chép lỗi để dán vào khung chat AI Studio"
-            >
-              {copiedError ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400">{t('copied')}</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{t('btnCopy')}</span>
-                </>
-              )}
-            </button>
-
-            {/* Retry button */}
-            <button
-              type="button"
-              onClick={() => onExtract()}
-              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
-              title="Thử lại"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -118,8 +118,18 @@ export default function App() {
 
   const handleExtract = async (targetUrl?: string) => {
     const queryUrl = targetUrl || url;
-    if (!queryUrl || !queryUrl.trim()) {
-      setError(t('errEmptyUrl'));
+    const trimmedUrl = (queryUrl || '').trim();
+
+    // 1. Kiểm tra trường hợp chưa dán link (input rỗng)
+    if (!trimmedUrl) {
+      window.alert(t('alertEmptyLink'));
+      return;
+    }
+
+    // 2. Kiểm tra liên kết hợp lệ từ TikTok hoặc Douyin
+    const isValidUrl = /(tiktok\.com|douyin\.com|iesdouyin\.com)/i.test(trimmedUrl);
+    if (!isValidUrl) {
+      window.alert(t('alertInvalidLink'));
       return;
     }
 
@@ -132,20 +142,18 @@ export default function App() {
       const response = await fetch('/api/tiktok/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: queryUrl.trim() }),
+        body: JSON.stringify({ url: trimmedUrl }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.message || t('errExtractFailed'));
+        throw new Error(data.message || t('errorExtractFailed'));
       }
       setCurrentMedia(data.data);
       setDirectDownloadInfo(null);
     } catch (err: any) {
-      if (!navigator.onLine) {
-        setError(t('errNetwork'));
-      } else {
-        setError(t('errExtractFailed'));
-      }
+      const errorMsg = !navigator.onLine ? t('errNetwork') : (err?.message || t('errorExtractFailed'));
+      setError(errorMsg);
+      window.alert(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -223,7 +231,7 @@ export default function App() {
         }
         const downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
 
-        setDownloadProgressText(`Đang tải video ${type === 'video_hd' ? 'HD (1080p)' : 'SD'}...`);
+        setDownloadProgressText(t('loadingVideo'));
         let blob: Blob | null = null;
 
         // Thử tải trực tiếp từ CDN trước để tiết kiệm tài nguyên
@@ -341,7 +349,7 @@ export default function App() {
           return { url: imgUrl, relativePath: pathData.relativePath };
         });
 
-        setDownloadProgressText('Đang nén ảnh trực tiếp trên trình duyệt...');
+        setDownloadProgressText(t('compressingPhotos'));
         let zipBlob: Blob | null = null;
 
         try {
@@ -353,14 +361,14 @@ export default function App() {
           zipBlob = await createClientZipArchive(
             zipItems,
             (percent) => {
-              setDownloadProgressText(`Đang nén ảnh (${percent}%)...`);
+              setDownloadProgressText(`${t('compressingPhotos')} (${percent}%)`);
             },
             session
           );
         } catch (clientZipErr: any) {
           if (session.isCancelled || clientZipErr?.name === 'AbortError') throw clientZipErr;
           try {
-            setDownloadProgressText('Đang nén từ máy chủ...');
+            setDownloadProgressText(t('compressingPhotos'));
             const zipRes = await fetch('/api/tiktok/bundle-zip', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -391,7 +399,7 @@ export default function App() {
       } else if (type === 'photo_single' && typeof photoIndex === 'number' && media.images?.[photoIndex]) {
         const imgUrl = media.images[photoIndex];
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: photoIndex + 1 });
-        setDownloadProgressText(`Đang tải ảnh ${photoIndex + 1}...`);
+        setDownloadProgressText(t('downloadingPhoto'));
 
         let blob: Blob | null = null;
         const photoPayload = {
@@ -549,7 +557,7 @@ export default function App() {
               <span className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 leading-none">
                 SnapTikDou
               </span>
-              <span className="text-[11px] text-slate-500 font-normal hidden sm:inline">
+              <span style={{ color: '#000000' }} className="text-[11px] font-normal hidden sm:inline">
                 {t('sloganSub')}
               </span>
             </div>
@@ -625,7 +633,7 @@ export default function App() {
                     SnapTikDou
                   </span>
                 </h1>
-                <p id="hero-subtitle" className="text-[16px] leading-relaxed max-w-2xl mx-auto text-slate-600">
+                <p id="hero-subtitle" style={{ color: '#000000' }} className="text-[16px] leading-relaxed max-w-2xl mx-auto">
                   {t('sloganSub')}
                 </p>
               </div>
@@ -636,7 +644,6 @@ export default function App() {
               setUrl={setUrl}
               onExtract={handleExtract}
               isLoading={isLoading}
-              error={error}
               theme={theme}
             />
 
@@ -679,7 +686,7 @@ export default function App() {
               <img src="/logo.svg" alt="SnapTikDou" className="w-7 h-7 object-contain" />
               <span className="text-lg font-bold text-slate-900 tracking-wider uppercase">SnapTikDou</span>
             </div>
-            <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
+            <p style={{ color: '#000000' }} className="text-xs leading-relaxed max-w-sm">
               {t('sloganSub')}
             </p>
             <div className="text-xs text-slate-500 pt-1">

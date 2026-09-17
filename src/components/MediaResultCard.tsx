@@ -407,14 +407,12 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 : 'bg-slate-950/70 border-slate-800/80'
             }`}
           >
-            <h3
-              className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
-                isLight ? 'text-slate-500' : 'text-slate-400'
-              }`}
-            >
+            <div className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-pink-500"></span>
-              <span>{t('postContent')}</span>
-            </h3>
+              <span className={`text-xs font-semibold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                {t('postCaption')}
+              </span>
+            </div>
             <p
               className={`text-sm leading-relaxed break-words font-normal ${
                 isLight ? 'text-slate-800' : 'text-slate-200'
@@ -485,7 +483,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-500 shrink-0" />
                       )}
                       <span className="truncate max-w-[190px] sm:max-w-none">
-                        {downloadProgressText || 'Đang xử lý tải...'}
+                        {downloadProgressText || t('processingDownload')}
                       </span>
                     </span>
 
