@@ -27,6 +27,11 @@ interface DirectDownloadInfo {
 export default function App() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'download' | 'history'>('download');
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showCookieModal, setShowCookieModal] = useState(false);
+  const [showDisclaimerModal, setShowDisclaimerModal] = useState(false);
+  const [showDmcaModal, setShowDmcaModal] = useState(false);
   const theme = 'light';
 
   const [url, setUrl] = useState('');
@@ -703,11 +708,46 @@ export default function App() {
               {t('footerLegal')}
             </h4>
             <ul className="space-y-2.5 text-xs">
-              <li><a href="#" className="hover:text-pink-600 transition">{t('termsOfService')}</a></li>
-              <li><a href="#" className="hover:text-pink-600 transition">{t('privacyPolicy')}</a></li>
-              <li><a href="#" className="hover:text-pink-600 transition">{t('cookiePolicy')}</a></li>
-              <li><a href="#" className="hover:text-pink-600 transition">{t('disclaimerTitle')}</a></li>
-              <li><a href="#" className="hover:text-pink-600 transition">DMCA</a></li>
+              <li>
+                <button 
+                  onClick={() => setShowTermsModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
+                  {t('termsOfService')}
+                </button>
+              </li>
+              <li>
+                <button 
+                  onClick={() => setShowPrivacyModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
+                  {t('privacyPolicy')}
+                </button>
+              </li>
+              <li>
+                <button 
+                  onClick={() => setShowCookieModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
+                  {t('cookiePolicy')}
+                </button>
+              </li>
+              <li>
+                <button 
+                  onClick={() => setShowDisclaimerModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
+                  {t('disclaimerTitle')}
+                </button>
+              </li>
+              <li>
+                <button 
+                  onClick={() => setShowDmcaModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
+                  DMCA
+                </button>
+              </li>
             </ul>
           </div>
         </div>
@@ -718,6 +758,306 @@ export default function App() {
           </p>
         </div>
       </footer>
+
+      {/* Modal Điều khoản sử dụng */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Nút đóng */}
+            <button 
+              onClick={() => setShowTermsModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Tiêu đề & Giới thiệu */}
+            <div className="flex items-center gap-2 mb-3">
+              <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('termsContent.title')}
+              </h3>
+            </div>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('termsContent.intro')}
+            </p>
+
+            {/* Các điều khoản chi tiết */}
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('termsContent.sec1_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('termsContent.sec1_desc')}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('termsContent.sec2_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('termsContent.sec2_desc')}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('termsContent.sec3_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('termsContent.sec3_desc')}</p>
+              </div>
+            </div>
+
+            {/* Nút đóng dưới cùng */}
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setShowTermsModal(false)}
+                className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white font-medium text-xs rounded-xl shadow-xs transition"
+              >
+                {t('btnClose')}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Chính sách bảo mật */}
+      {showPrivacyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Nút đóng */}
+            <button 
+              onClick={() => setShowPrivacyModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Tiêu đề & Giới thiệu */}
+            <div className="flex items-center gap-2 mb-3">
+              <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('privacyContent.title')}
+              </h3>
+            </div>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('privacyContent.intro')}
+            </p>
+
+            {/* Nội dung chính sách */}
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('privacyContent.sec1_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('privacyContent.sec1_desc')}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('privacyContent.sec2_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('privacyContent.sec2_desc')}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('privacyContent.sec3_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('privacyContent.sec3_desc')}</p>
+              </div>
+            </div>
+
+            {/* Nút đóng chân modal */}
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setShowPrivacyModal(false)}
+                className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white font-medium text-xs rounded-xl shadow-xs transition"
+              >
+                {t('btnClose')}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Chính sách Cookie */}
+      {showCookieModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Nút đóng */}
+            <button 
+              onClick={() => setShowCookieModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Tiêu đề & Giới thiệu */}
+            <div className="flex items-center gap-2 mb-3">
+              <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('cookieContent.title')}
+              </h3>
+            </div>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('cookieContent.intro')}
+            </p>
+
+            {/* Nội dung chính sách */}
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('cookieContent.sec1_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('cookieContent.sec1_desc')}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('cookieContent.sec2_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('cookieContent.sec2_desc')}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('cookieContent.sec3_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('cookieContent.sec3_desc')}</p>
+              </div>
+            </div>
+
+            {/* Nút đóng chân modal */}
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setShowCookieModal(false)}
+                className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white font-medium text-xs rounded-xl shadow-xs transition"
+              >
+                {t('btnClose')}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Miễn trừ trách nhiệm */}
+      {showDisclaimerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Nút đóng */}
+            <button 
+              onClick={() => setShowDisclaimerModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Tiêu đề & Giới thiệu */}
+            <div className="flex items-center gap-2 mb-3">
+              <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('disclaimerContent.title')}
+              </h3>
+            </div>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('disclaimerContent.intro')}
+            </p>
+
+            {/* Nội dung chi tiết */}
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('disclaimerContent.sec1_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('disclaimerContent.sec1_desc')}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('disclaimerContent.sec2_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('disclaimerContent.sec2_desc')}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('disclaimerContent.sec3_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('disclaimerContent.sec3_desc')}</p>
+              </div>
+            </div>
+
+            {/* Nút đóng chân modal */}
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setShowDisclaimerModal(false)}
+                className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white font-medium text-xs rounded-xl shadow-xs transition"
+              >
+                {t('btnClose')}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal DMCA */}
+      {showDmcaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Nút đóng */}
+            <button 
+              onClick={() => setShowDmcaModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Tiêu đề & Giới thiệu */}
+            <div className="flex items-center gap-2 mb-3">
+              <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('dmcaContent.title')}
+              </h3>
+            </div>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('dmcaContent.intro')}
+            </p>
+
+            {/* Nội dung chi tiết */}
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('dmcaContent.sec1_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('dmcaContent.sec1_desc')}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('dmcaContent.sec2_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">
+                  {t('dmcaContent.sec2_desc')}{' '}
+                  <a href="mailto:snaptikdou@gmail.com" className="text-pink-600 font-medium underline">
+                    snaptikdou@gmail.com
+                  </a>.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-1">{t('dmcaContent.sec3_title')}</h4>
+                <p className="text-slate-600 leading-relaxed">{t('dmcaContent.sec3_desc')}</p>
+              </div>
+            </div>
+
+            {/* Nút đóng chân modal */}
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setShowDmcaModal(false)}
+                className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white font-medium text-xs rounded-xl shadow-xs transition"
+              >
+                {t('btnClose')}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
