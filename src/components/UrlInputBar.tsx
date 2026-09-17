@@ -57,16 +57,11 @@ targetUrl: ${url}
       const trimmed = text.trim();
       if (!trimmed) return false;
 
-      setUrl(trimmed);
+      setUrl(trimmed); // Chỉ gán link vào ô nhập, không tự động gọi onExtract
       setPasteNotice('Đã dán!');
       setTimeout(() => setPasteNotice(null), 2000);
 
       inputRef.current?.focus();
-
-      // If valid TikTok/Douyin link, trigger extraction immediately
-      if (trimmed.includes('tiktok.com') || trimmed.includes('douyin.com')) {
-        onExtract(trimmed);
-      }
       return true;
     };
 
@@ -123,14 +118,9 @@ targetUrl: ${url}
   // Detect native paste event directly inside input
   const handleInputPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const pasted = e.clipboardData.getData('text');
-    if (pasted && (pasted.includes('tiktok.com') || pasted.includes('douyin.com'))) {
+    if (pasted) {
       setPasteNotice('Đã dán!');
       setTimeout(() => setPasteNotice(null), 2000);
-
-      // Trigger extract right away
-      setTimeout(() => {
-        onExtract(pasted.trim());
-      }, 80);
     }
   };
 
