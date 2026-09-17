@@ -1,7 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, History, ExternalLink, Sun, Moon } from 'lucide-react';
-import { DiamondLogo } from './DiamondLogo';
 import { LanguageSelector } from './LanguageSelector';
 
 interface HeaderProps {
@@ -34,8 +33,12 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={() => setActiveTab('download')}
           className="flex items-center gap-2 shrink-0 cursor-pointer select-none group"
         >
-          <div className="relative w-8 h-8 sm:w-9 sm:h-9 transition-transform duration-300 group-hover:scale-105 flex items-center justify-center">
-            <DiamondLogo size={36} className="w-8 h-8 sm:w-9 sm:h-9 object-contain" />
+          <div className="relative w-7 h-7 sm:w-8 sm:h-8 transition-transform duration-300 group-hover:scale-105 flex items-center justify-center">
+            <img 
+              src="/logo.svg" 
+              alt="SnapTikDou Logo" 
+              className="w-7 h-7 sm:w-8 sm:h-8 object-contain" 
+            />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">

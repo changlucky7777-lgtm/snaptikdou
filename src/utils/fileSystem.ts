@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import i18n from '../i18n';
 
 export interface DirectorySaveResult {
   saved: number;
@@ -564,9 +565,21 @@ export async function streamFetchBlob(
     if (onProgress && received === 0) {
       if (totalExpectedLength > 0) {
         const totalMB = (totalExpectedLength / (1024 * 1024)).toFixed(1);
-        onProgress(`Đang tải: 0.0/${totalMB} MB (0%)...`);
+        onProgress(
+          i18n.t('downloadingProgress', {
+            loaded: '0.0 MB',
+            total: `${totalMB} MB`,
+            percent: 0,
+          })
+        );
       } else {
-        onProgress(`Đang tải: 0.0 MB...`);
+        onProgress(
+          i18n.t('downloadingProgress', {
+            loaded: '0.0 MB',
+            total: '... MB',
+            percent: 0,
+          })
+        );
       }
     }
 
@@ -593,9 +606,21 @@ export async function streamFetchBlob(
             if (totalExpectedLength > 0) {
               const totalMB = (totalExpectedLength / (1024 * 1024)).toFixed(1);
               const percent = Math.min(100, Math.round((received / totalExpectedLength) * 100));
-              onProgress(`Đang tải: ${receivedMB}/${totalMB} MB (${percent}%)...`);
+              onProgress(
+                i18n.t('downloadingProgress', {
+                  loaded: `${receivedMB} MB`,
+                  total: `${totalMB} MB`,
+                  percent,
+                })
+              );
             } else {
-              onProgress(`Đang tải: ${receivedMB} MB...`);
+              onProgress(
+                i18n.t('downloadingProgress', {
+                  loaded: `${receivedMB} MB`,
+                  total: '... MB',
+                  percent: 0,
+                })
+              );
             }
           }
         }

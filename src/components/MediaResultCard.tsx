@@ -275,6 +275,18 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   referrerPolicy="no-referrer"
                 />
 
+                {/* Download single active photo button */}
+                <button
+                  type="button"
+                  onClick={() => onDownloadSingle(media, 'photo_single', currentPhotoIndex)}
+                  disabled={isDownloading}
+                  title={t('btnDownloadSinglePhoto')}
+                  aria-label={t('btnDownloadSinglePhoto')}
+                  className="absolute top-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/85 text-white backdrop-blur-sm transition active:scale-95 cursor-pointer z-10"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+
                 {/* Slider controls */}
                 {media.images.length > 1 && (
                   <>
@@ -302,7 +314,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                     </button>
 
                     <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/75 backdrop-blur-md rounded-full text-xs text-white font-mono border border-white/10 shadow-lg">
-                      {currentPhotoIndex + 1} / {media.images.length} Ảnh
+                      {currentPhotoIndex + 1} / {media.images.length} {t('photoUnit')}
                     </div>
                   </>
                 )}
@@ -322,9 +334,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   type="button"
                   onClick={() => setIsVideoPlaying(false)}
                   className="absolute top-2.5 right-2.5 px-2 py-1 rounded-lg bg-black/70 hover:bg-black/90 text-white text-[10px] font-semibold backdrop-blur-sm border border-white/10 transition z-10 cursor-pointer"
-                  title="Thu nhỏ video"
+                  title={t('btnClose')}
                 >
-                  ✕ Đóng
+                  ✕ {t('btnClose')}
                 </button>
               </div>
             ) : (
@@ -349,9 +361,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 </div>
 
                 {/* Bottom Center "Mở video" pill badge */}
-                <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 w-[94px] justify-center px-3 py-1 rounded-full bg-black/80 group-hover:bg-black/95 backdrop-blur-md text-white text-[11px] font-semibold flex items-center gap-1.5 border border-white/10 shadow-xl transition-all group-hover:scale-105 whitespace-nowrap">
+                <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/80 group-hover:bg-black/95 backdrop-blur-md text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-white/10 shadow-xl transition-all group-hover:scale-105 whitespace-nowrap">
                   <Film className="w-3.5 h-3.5 text-pink-400 shrink-0" />
-                  <span>Mở video</span>
+                  <span>{t('openVideo')}</span>
                 </div>
               </div>
             )}
@@ -568,7 +580,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                               : 'text-white group-hover:text-amber-300'
                           }`}
                         >
-                          Tải Trọn Bộ {media.images.length} Ảnh
+                          {t('downloadAllPhotosCount', { count: media.images.length })}
                         </span>
                         <span
                           className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
@@ -782,6 +794,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
 };
 
 export const MediaResultCardSkeleton: React.FC<{ theme?: 'dark' | 'light' }> = ({ theme = 'dark' }) => {
+  const { t } = useTranslation();
   const isLight = theme === 'light';
 
   return (
@@ -901,7 +914,7 @@ export const MediaResultCardSkeleton: React.FC<{ theme?: 'dark' | 'light' }> = (
               </div>
               <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-500 text-xs font-semibold">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                <span>Đang trích xuất dữ liệu...</span>
+                <span>{t('extractingData')}</span>
               </div>
             </div>
 

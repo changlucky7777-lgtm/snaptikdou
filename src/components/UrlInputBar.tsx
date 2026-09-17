@@ -30,7 +30,7 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
 }) => {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [pasteNotice, setPasteNotice] = useState<string | null>(null);
+  const [isPasted, setIsPasted] = useState(false);
   const [copiedError, setCopiedError] = useState(false);
 
   const handleCopyErrorForAI = () => {
@@ -60,8 +60,8 @@ targetUrl: ${url}
       if (!trimmed) return false;
 
       setUrl(trimmed); // Chỉ gán link vào ô nhập, không tự động gọi onExtract
-      setPasteNotice('Đã dán!');
-      setTimeout(() => setPasteNotice(null), 2000);
+      setIsPasted(true);
+      setTimeout(() => setIsPasted(false), 2000);
 
       inputRef.current?.focus();
       return true;
@@ -121,13 +121,13 @@ targetUrl: ${url}
   const handleInputPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     const pasted = e.clipboardData.getData('text');
     if (pasted) {
-      setPasteNotice('Đã dán!');
-      setTimeout(() => setPasteNotice(null), 2000);
+      setIsPasted(true);
+      setTimeout(() => setIsPasted(false), 2000);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !isLoading && url.trim()) {
+    if (e.key === 'Enter' && !isLoading) {
       onExtract();
     }
   };
@@ -211,10 +211,10 @@ targetUrl: ${url}
         >
           <span
             className={`inline-flex items-center justify-center whitespace-nowrap ${
-              pasteNotice ? 'text-pink-500 font-bold' : (theme === 'light' ? 'text-slate-700' : 'text-slate-200')
+              isPasted ? 'text-pink-500 font-bold' : (theme === 'light' ? 'text-slate-700' : 'text-slate-200')
             }`}
           >
-            {pasteNotice || t('btnPaste')}
+            {isPasted ? t('pasted') : t('btnPaste')}
           </span>
         </button>
       </div>
@@ -224,10 +224,10 @@ targetUrl: ${url}
         id="btn-extract-tiktok"
         type="button"
         onClick={() => onExtract()}
-        disabled={isLoading || !url.trim()}
+        disabled={isLoading}
         style={{ borderRadius: '21px' }}
-        className={`px-6 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all duration-200 whitespace-nowrap shadow-md touch-manipulation min-h-[40px] mx-auto ${
-          isLoading || !url.trim()
+        className={`px-6 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all duration-200 whitespace-nowrap shadow-md touch-manipulation min-h-[40px] mx-auto cursor-pointer ${
+          isLoading
             ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
             : 'bg-gradient-to-r from-pink-600 via-rose-600 to-pink-500 text-white hover:from-pink-500 hover:to-rose-500 shadow-pink-600/30 hover:scale-[1.02] active:scale-[0.98]'
         }`}
@@ -252,7 +252,7 @@ targetUrl: ${url}
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
             <div className="space-y-0.5">
               <div className="font-semibold text-red-200 flex items-center gap-1.5">
-                <span>Phát hiện lỗi:</span>
+                <span>{t('errorDetected')}</span>
               </div>
               <span className="text-red-300 text-xs leading-relaxed">{error}</span>
             </div>
@@ -264,18 +264,18 @@ targetUrl: ${url}
             <button
               type="button"
               onClick={handleCopyErrorForAI}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs border border-slate-700 transition cursor-pointer"
               title="Sao chép lỗi để dán vào khung chat AI Studio"
             >
               {copiedError ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400">Đã copy!</span>
+                  <span className="text-emerald-400">{t('copied')}</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Copy</span>
+                  <span>{t('btnCopy')}</span>
                 </>
               )}
             </button>

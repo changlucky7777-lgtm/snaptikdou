@@ -78,7 +78,11 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
         {records.length > 0 && (
           <div className="flex justify-end mb-4">
             <button
-              onClick={onClearHistory}
+              onClick={() => {
+                if (window.confirm(t('confirmClearHistory'))) {
+                  onClearHistory();
+                }
+              }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                 isLight
                   ? 'text-slate-500 hover:text-red-600 hover:bg-red-50'
@@ -200,7 +204,7 @@ export const HistorySection: React.FC<HistorySectionProps> = ({
         >
           <HardDrive className={`w-12 h-12 mx-auto mb-3 ${isLight ? 'text-slate-400' : 'text-slate-600'}`} />
           <h3 className={`text-sm font-bold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-            Chưa có lịch sử tải nào
+            {t('emptyHistory')}
           </h3>
         </div>
       ) : filtered.length === 0 ? (

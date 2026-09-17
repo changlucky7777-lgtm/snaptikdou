@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Cyan Background Squircle -->
+  <rect width="512" height="512" rx="128" fill="#00F0FF" />
+
+  <!-- Stylized Dark Organic Blob Silhouette -->
+  <path
+    d="
+      M 256 100
+      C 200 98, 140 145, 115 220
+      C 92 290, 108 385, 175 440
+      C 230 480, 315 478, 385 435
+      C 445 395, 465 315, 440 250
+      C 420 205, 365 210, 340 205
+      C 305 200, 290 150, 285 125
+      C 280 108, 270 100, 256 100
+      Z
+    "
+    fill="#090B13"
+  />
+
+  <!-- Downward Arrow with Rounded Corners -->
+  <path
+    d="
+      M 232 128
+      C 232 115, 243 104, 256 104
+      C 269 104, 280 115, 280 128
+      L 280 208
+      L 326 208
+      C 344 208, 354 229, 342 242
+      L 268 335
+      C 262 342, 250 342, 244 335
+      L 170 242
+      C 158 229, 168 208, 186 208
+      L 232 208
+      Z
+    "
+    fill="#FFFFFF"
+  />
+
+  <!-- Bottom Horizontal Rounded Bar / Tray -->
+  <rect
+    x="144"
+    y="374"
+    width="224"
+    height="46"
+    rx="23"
+    fill="#FFFFFF"
+  />
+</svg>

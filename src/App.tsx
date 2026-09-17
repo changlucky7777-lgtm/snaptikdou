@@ -136,7 +136,10 @@ export default function App() {
 
   const handleExtract = async (targetUrl?: string) => {
     const queryUrl = targetUrl || url;
-    if (!queryUrl || !queryUrl.trim()) return;
+    if (!queryUrl || !queryUrl.trim()) {
+      setError(t('errEmptyUrl'));
+      return;
+    }
 
     setIsLoading(true);
     setCurrentMedia(null);
@@ -151,12 +154,16 @@ export default function App() {
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Không thể trích xuất video TikTok. Vui lòng kiểm tra lại link.');
+        throw new Error(data.message || t('errExtractFailed'));
       }
       setCurrentMedia(data.data);
       setDirectDownloadInfo(null);
     } catch (err: any) {
-      setError(err.message || 'Đã xảy ra lỗi khi phân tích URL.');
+      if (!navigator.onLine) {
+        setError(t('errNetwork'));
+      } else {
+        setError(t('errExtractFailed'));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -275,7 +282,7 @@ export default function App() {
         if (blob) {
           await downloadBlobSafely(blob, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, type, 'video');
-          setDownloadProgressText('Tải video thành công!');
+          setDownloadProgressText(t('downloadCompleted'));
           setTimeout(() => setDownloadProgressText(''), 3000);
         } else {
           triggerNativeBrowserDownload(downloadUrl, pathData.filename);
@@ -340,7 +347,7 @@ export default function App() {
         if (blob) {
           await downloadBlobSafely(blob, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-          setDownloadProgressText('Tải MP3 thành công!');
+          setDownloadProgressText(t('downloadCompleted'));
           setTimeout(() => setDownloadProgressText(''), 3000);
         } else {
           triggerNativeBrowserDownload(downloadUrl, pathData.filename);
@@ -394,7 +401,7 @@ export default function App() {
         if (zipBlob) {
           await downloadBlobSafely(zipBlob, `@${media.author.uniqueId}_photo_slides.zip`);
           addHistoryRecord(media, `@${media.author.uniqueId}/photos/ (${items.length} ảnh)`, 'photos_zip', 'photos');
-          setDownloadProgressText('Tải album ảnh thành công!');
+          setDownloadProgressText(t('downloadCompleted'));
           setTimeout(() => setDownloadProgressText(''), 3000);
         } else {
           throw new Error('Không thể nén ZIP cho album ảnh.');
@@ -455,7 +462,7 @@ export default function App() {
         if (blob) {
           await downloadBlobSafely(blob, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, 'photo_single', 'photos');
-          setDownloadProgressText(`Tải ảnh ${photoIndex + 1} thành công!`);
+          setDownloadProgressText(t('downloadCompleted'));
           setTimeout(() => setDownloadProgressText(''), 3000);
         } else {
           triggerNativeBrowserDownload(photoDownloadUrl, pathData.filename);
@@ -512,7 +519,7 @@ export default function App() {
       if (currentMedia) {
         addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
       }
-      setDownloadProgressText('Tải thành công!');
+      setDownloadProgressText(t('downloadCompleted'));
     } catch (err: any) {
       if (err?.name === 'AbortError' || session.isCancelled) {
         setDownloadProgressText('Đã hủy');
@@ -624,14 +631,16 @@ export default function App() {
 
           <div className="flex items-center justify-center gap-1.5 transition">
             <span className={`text-[11px] ${
-              theme === 'light' ? 'text-slate-700' : 'text-[#ffffff] border-[#ffffff]'
-            }`}>Email:</span>
+              theme === 'light' ? 'text-slate-700' : 'text-[#ffffff]'
+            }`}>
+              {t('footerEmail')}
+            </span>
             <a
               href="mailto:snaptikdou@gmail.com"
               className={`text-[11px] font-medium underline underline-offset-2 transition ${
                 theme === 'light'
                   ? 'text-pink-600 hover:text-pink-700'
-                  : 'text-[#ffffff] border-[#ffffff] hover:text-slate-200'
+                  : 'text-[#ffffff] hover:text-slate-200'
               }`}
               title="Gửi email hỗ trợ"
             >
