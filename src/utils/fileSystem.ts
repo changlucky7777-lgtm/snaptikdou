@@ -674,17 +674,6 @@ export function triggerNativeDownload(downloadUrl: string, filename: string) {
   downloadDirectFile(downloadUrl, filename);
 }
 
-// Rung phản hồi nhẹ khi chạm nút trên điện thoại (Haptic Touch)
-export function triggerHapticFeedback(pattern: number | number[] = 15) {
-  if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-    try {
-      navigator.vibrate(pattern);
-    } catch {
-      // Bỏ qua nếu thiết bị chặn rung
-    }
-  }
-}
-
 // Trigger reliable browser download for an external media URL without opening media player
 export async function triggerDirectUrlDownload(url: string, filename: string = 'media.mp4') {
   // Fetch via stream proxy with Blob
