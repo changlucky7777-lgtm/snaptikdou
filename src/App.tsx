@@ -217,15 +217,10 @@ export default function App() {
 
         const initialUrl = primaryUrl || fallbackUrl;
         const backupUrls = media.video.backupUrls || [];
-        const downloadPayload = {
-          url: initialUrl,
-          fallbackUrl: fallbackUrl && fallbackUrl !== initialUrl ? fallbackUrl : '',
-          backupUrls,
-          postUrl: media.url,
-          mediaType: 'video',
-          resolution: type === 'video_hd' ? 'hd' : 'sd',
-          filename: pathData.filename,
-        };
+
+        // Ngưỡng 70MB: Tính theo data_size trả về từ API
+        const fileSize = (type === 'video_hd' ? media.video.hdSize : media.video.size) || 0;
+        const isOver70MB = fileSize > 70 * 1024 * 1024;
 
         const downloadParams = new URLSearchParams({
           url: initialUrl,
@@ -238,12 +233,20 @@ export default function App() {
         if (backupUrls && backupUrls.length > 0) {
           downloadParams.set('backupUrls', backupUrls.join(','));
         }
-        const downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
+        const serverDownloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
 
+        // NẾU VIDEO DUNG LƯỢNG LỚN (> 70MB): TẢI STREAM TRỰC TIẾP QUA TRÌNH DUYỆT (0 MB RAM)
+        if (isOver70MB) {
+          setDownloadProgressText('Đang chuyển luồng tải tốc độ cao...');
+          triggerNativeBrowserDownload(serverDownloadUrl, pathData.filename);
+          addHistoryRecord(media, pathData.fullPath, type, 'video');
+          setTimeout(() => setDownloadProgressText(''), 2500);
+          return;
+        }
+
+        // VỚI VIDEO NHỎ (<= 70MB): GIỮ NGUYÊN LUỒNG BLOB CLIENT HIỆN TẠI (NHANH VÀ TIỆN)
         setDownloadProgressText(t('loadingVideo'));
         let blob: Blob | null = null;
-
-        // Thử tải trực tiếp từ CDN trước để tiết kiệm tài nguyên
         if (initialUrl && !initialUrl.startsWith('/api/')) {
           try {
             blob = await streamFetchBlob(initialUrl, (p) => setDownloadProgressText(p), 20000, undefined, session);
@@ -251,107 +254,53 @@ export default function App() {
             if (session.isCancelled || cdnErr?.name === 'AbortError') throw cdnErr;
           }
         }
-
-        // Nếu trực tiếp bị chặn thì chạy qua proxy stream của server
         if (!blob) {
           try {
-            blob = await streamFetchBlob(
-              '/api/tiktok/download',
-              (progressText) => setDownloadProgressText(progressText),
-              45000,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(downloadPayload),
-              },
-              session
-            );
+            blob = await streamFetchBlob(serverDownloadUrl, (p) => setDownloadProgressText(p), 45000, undefined, session);
           } catch (err: any) {
             if (session.isCancelled || err?.name === 'AbortError') throw err;
-            try {
-              blob = await streamFetchBlob(downloadUrl, (p) => setDownloadProgressText(p), 45000, undefined, session);
-            } catch (err2: any) {
-              if (session.isCancelled || err2?.name === 'AbortError') throw err2;
-            }
           }
         }
 
         if (session.isCancelled) return;
-
         if (blob) {
           await downloadBlobSafely(blob, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, type, 'video');
           setDownloadProgressText(t('downloadCompleted'));
           setTimeout(() => setDownloadProgressText(''), 3000);
         } else {
-          triggerNativeBrowserDownload(downloadUrl, pathData.filename);
+          triggerNativeBrowserDownload(serverDownloadUrl, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, type, 'video');
         }
+
       } else if (type === 'audio') {
-        const audioUrl = media.audio?.url || (media.mediaType === 'photos' ? media.video?.noWatermark : '');
-        if (!audioUrl) {
-          throw new Error('Không tìm thấy đường dẫn âm thanh MP3 của bài viết này.');
-        }
-
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
-        const audioParams = new URLSearchParams({
-          url: audioUrl,
-          postUrl: media.url,
-          mediaType: 'audio',
-          filename: pathData.filename,
-        });
-        const downloadUrl = `/api/tiktok/download?${audioParams.toString()}`;
 
+        // XỬ LÝ NGUỒN ÂM THANH CHUẨN:
+        // Nếu là Douyin hoặc video TikTok dài > 60s mà link audio bị cắt hoặc không có link audio riêng:
+        const isVideoLong = (media.duration || 0) > 60;
+        const rawAudioUrl = media.audio?.url;
+        const videoUrl = media.video.hd || media.video.noWatermark;
+
+        // Nếu video dài mà link audio ngắn hoặc Douyin không có audio riêng -> dùng videoUrl làm nguồn tách âm thanh
+        const effectiveMediaSource =
+          (isVideoLong || !rawAudioUrl || media.platform === 'douyin') && videoUrl
+            ? videoUrl
+            : (rawAudioUrl || videoUrl);
+
+        if (!effectiveMediaSource) {
+          throw new Error('Không tìm thấy đường dẫn âm thanh của bài viết này.');
+        }
+
+        // TẢI FILE MP3 CHUẨN QUA FFMPEG STREAMING PIPE (KHÔNG BỊ THÀNH FILE VIDEO MP4)
         setDownloadProgressText(t('loadingAudio'));
-        let blob: Blob | null = null;
+        const audioStreamUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(effectiveMediaSource)}&filename=${encodeURIComponent(pathData.filename)}`;
 
-        if (audioUrl && !audioUrl.startsWith('/api/')) {
-          try {
-            blob = await streamFetchBlob(audioUrl, (p) => setDownloadProgressText(p), 20000, undefined, session);
-          } catch (cdnErr: any) {
-            if (session.isCancelled || cdnErr?.name === 'AbortError') throw cdnErr;
-          }
-        }
-
-        if (!blob) {
-          try {
-            blob = await streamFetchBlob(
-              '/api/tiktok/download',
-              (progressText) => setDownloadProgressText(progressText),
-              30000,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  url: audioUrl,
-                  postUrl: media.url,
-                  mediaType: 'audio',
-                  filename: pathData.filename,
-                }),
-              },
-              session
-            );
-          } catch (err: any) {
-            if (session.isCancelled || err?.name === 'AbortError') throw err;
-            try {
-              blob = await streamFetchBlob(downloadUrl, (p) => setDownloadProgressText(p), 30000, undefined, session);
-            } catch (err2: any) {
-              if (session.isCancelled || err2?.name === 'AbortError') throw err2;
-            }
-          }
-        }
-
-        if (session.isCancelled) return;
-
-        if (blob) {
-          await downloadBlobSafely(blob, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 3000);
-        } else {
-          triggerNativeBrowserDownload(downloadUrl, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-        }
+        // Kích hoạt trình quản lý download của trình duyệt lưu thẳng file .mp3
+        triggerNativeBrowserDownload(audioStreamUrl, pathData.filename);
+        addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
+        setDownloadProgressText(t('downloadCompleted'));
+        setTimeout(() => setDownloadProgressText(''), 3000);
       } else if (type === 'photos_zip') {
         const items = media.images.map((imgUrl, idx) => {
           const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: idx + 1 });

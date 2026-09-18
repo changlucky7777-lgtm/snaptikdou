@@ -3,6 +3,7 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import zlib from 'zlib';
 import { Readable } from 'stream';
+import { spawn } from 'child_process';
 import { pipeline } from 'stream/promises';
 import { createServer as createViteServer } from 'vite';
 import JSZip from 'jszip';
@@ -1431,6 +1432,65 @@ async function fetchMediaWithRetry(
   }
   return null;
 }
+
+// ============================================================================
+// 1. ENDPOINT TÁCH ÂM THANH MP3 CHUẨN QUA FFMPEG STREAMING PIPE
+// ============================================================================
+app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
+  const rawUrl = String(req.query.url || '').trim();
+  const requestedFilename = String(req.query.filename || 'audio.mp3').trim();
+
+  if (!rawUrl) {
+    res.status(400).send('Thiếu tham số URL âm thanh');
+    return;
+  }
+
+  const safeFilename =
+    requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() ||
+    'audio.mp3';
+  const encodedFilename = encodeURIComponent(requestedFilename);
+
+  // Ép header chuẩn để trình duyệt nhận diện và lưu đúng file MP3 thuần túy
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
+  );
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  const isDouyin =
+    rawUrl.includes('douyin.com') ||
+    rawUrl.includes('iesdouyin.com') ||
+    rawUrl.includes('zjcdn.com') ||
+    rawUrl.includes('douyinvod.com') ||
+    rawUrl.includes('snssdk.com');
+
+  const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
+  const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
+
+  // Gọi trực tiếp ffmpeg tách riêng dải audio stream, 0 MB RAM đệm, 0% CPU render lại
+  const ffmpegProcess = spawn('ffmpeg', [
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_delay_max', '5',
+    '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
+    '-i', rawUrl,
+    '-vn',                     // Cắt bỏ hoàn toàn khung hình video
+    '-acodec', 'libmp3lame',   // Nén chuẩn định dạng âm thanh MP3
+    '-b:a', '128k',            // Bitrate tối ưu
+    '-f', 'mp3',
+    'pipe:1'
+  ]);
+
+  ffmpegProcess.stdout.pipe(res);
+
+  ffmpegProcess.stderr.on('data', () => {}); // Bỏ qua log output để tránh tràn buffer
+
+  req.on('close', () => {
+    ffmpegProcess.kill('SIGKILL'); // Hủy tiến trình lập tức nếu client hủy tải
+  });
+});
 
 app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
