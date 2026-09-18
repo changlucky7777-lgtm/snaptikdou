@@ -1439,6 +1439,7 @@ async function fetchMediaWithRetry(
 app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
   const requestedFilename = String(req.query.filename || 'audio.mp3').trim();
+  const duration = Number(req.query.duration || 0); // Thời lượng tính bằng giây
 
   if (!rawUrl) {
     res.status(400).send('Thiếu tham số URL âm thanh');
@@ -1450,7 +1451,6 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
 
-  // Ép header chuẩn để trình duyệt nhận diện và lưu đúng file MP3 thuần túy
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader(
     'Content-Disposition',
@@ -1458,6 +1458,12 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   );
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Access-Control-Allow-Origin', '*');
+
+  // Ước tính kích thước MP3 ở bitrate 128kbps (16.000 bytes/giây) + 128KB header ID3
+  if (duration > 0) {
+    const estimatedBytes = Math.round(duration * 16000 + 131072);
+    res.setHeader('Content-Length', estimatedBytes.toString());
+  }
 
   const isDouyin =
     rawUrl.includes('douyin.com') ||
@@ -1469,26 +1475,24 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // Gọi trực tiếp ffmpeg tách riêng dải audio stream, 0 MB RAM đệm, 0% CPU render lại
   const ffmpegProcess = spawn('ffmpeg', [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '5',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
     '-i', rawUrl,
-    '-vn',                     // Cắt bỏ hoàn toàn khung hình video
-    '-acodec', 'libmp3lame',   // Nén chuẩn định dạng âm thanh MP3
-    '-b:a', '128k',            // Bitrate tối ưu
+    '-vn',
+    '-acodec', 'libmp3lame',
+    '-b:a', '128k',
     '-f', 'mp3',
     'pipe:1'
   ]);
 
   ffmpegProcess.stdout.pipe(res);
-
-  ffmpegProcess.stderr.on('data', () => {}); // Bỏ qua log output để tránh tràn buffer
+  ffmpegProcess.stderr.on('data', () => {});
 
   req.on('close', () => {
-    ffmpegProcess.kill('SIGKILL'); // Hủy tiến trình lập tức nếu client hủy tải
+    ffmpegProcess.kill('SIGKILL');
   });
 });
 

@@ -293,7 +293,7 @@ export default function App() {
 
         // KÍCH HOẠT TẢI STREAM MP3 QUA BACKEND ROUTE VỪA TẠO Ở PHẦN 1
         setDownloadProgressText(t('loadingAudio'));
-        const audioStreamUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(effectiveMediaSource)}&filename=${encodeURIComponent(pathData.filename)}`;
+        const audioStreamUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(effectiveMediaSource)}&filename=${encodeURIComponent(pathData.filename)}&duration=${media.duration || 0}`;
 
         triggerNativeBrowserDownload(audioStreamUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
