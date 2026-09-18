@@ -7,7 +7,9 @@ import { HistorySection } from './components/HistorySection';
 import { TikTokMediaItem, PathConfig, HistoryRecord } from './types';
 import { DEFAULT_PATH_CONFIG, buildFilePath } from './utils/pathBuilder';
 import { getInitialLanguage, saveLanguage, SupportedLang } from './i18n';
+import { DownloadToast } from './components/DownloadToast';
 import {
+  promptDirectoryPicker,
   streamFetchBlob,
   triggerBlobDownload,
   triggerNativeBrowserDownload,
@@ -68,6 +70,23 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [downloadProgressText, setDownloadProgressText] = useState<string>('');
   const downloadSessionRef = React.useRef<DownloadSession | null>(null);
+
+  const [customDirHandle, setCustomDirHandle] = useState<any | null>(null);
+  const [selectedDirName, setSelectedDirName] = useState<string | null>(null);
+  const [showFloatingToast, setShowFloatingToast] = useState(false);
+  const [isDownloadFinished, setIsDownloadFinished] = useState(false);
+
+  const handlePickDirectory = async () => {
+    try {
+      const handle = await promptDirectoryPicker();
+      if (handle) {
+        setCustomDirHandle(handle);
+        setSelectedDirName(handle.name);
+      }
+    } catch (e) {
+      console.warn('Không chọn thư mục:', e);
+    }
+  };
 
   const handlePauseDownload = () => {
     if (downloadSessionRef.current) {
@@ -198,6 +217,8 @@ export default function App() {
     setIsDownloading(true);
     setIsPaused(false);
     setDirectDownloadInfo(null);
+    setShowFloatingToast(true);
+    setIsDownloadFinished(false);
 
     try {
       if (type === 'video_hd' || type === 'video_sd') {
@@ -236,7 +257,11 @@ export default function App() {
 
         setTimeout(() => {
           setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 2500);
+          setIsDownloadFinished(true);
+          setTimeout(() => {
+            setShowFloatingToast(false);
+            setIsDownloadFinished(false);
+          }, 4000);
         }, 800);
 
       } else if (type === 'audio') {
@@ -266,7 +291,11 @@ export default function App() {
 
         setTimeout(() => {
           setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 2500);
+          setIsDownloadFinished(true);
+          setTimeout(() => {
+            setShowFloatingToast(false);
+            setIsDownloadFinished(false);
+          }, 4000);
         }, 800);
 
       } else if (type === 'photos_zip') {
@@ -297,7 +326,11 @@ export default function App() {
 
         addHistoryRecord(media, `@${media.author.uniqueId}/photos/ (${items.length} ảnh)`, 'photos_zip', 'photos');
         setDownloadProgressText(t('downloadCompleted'));
-        setTimeout(() => setDownloadProgressText(''), 3000);
+        setIsDownloadFinished(true);
+        setTimeout(() => {
+          setShowFloatingToast(false);
+          setIsDownloadFinished(false);
+        }, 4000);
 
       } else if (type === 'photo_single' && typeof photoIndex === 'number' && media.images?.[photoIndex]) {
         const imgUrl = media.images[photoIndex];
@@ -318,7 +351,11 @@ export default function App() {
 
         setTimeout(() => {
           setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 2000);
+          setIsDownloadFinished(true);
+          setTimeout(() => {
+            setShowFloatingToast(false);
+            setIsDownloadFinished(false);
+          }, 4000);
         }, 800);
       }
     } catch (err: any) {
@@ -375,6 +412,15 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans selection:bg-pink-500 selection:text-white overflow-x-hidden w-full bg-slate-50 text-slate-900">
+      <DownloadToast
+        isVisible={showFloatingToast || isDownloading}
+        progressText={downloadProgressText}
+        isCompleted={isDownloadFinished}
+        onClose={() => setShowFloatingToast(false)}
+        onSelectDirectory={handlePickDirectory}
+        selectedDirName={selectedDirName}
+      />
+
       {/* Header */}
       <header className="w-full bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 shadow-xs">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3">

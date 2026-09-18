@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+/* Kích hoạt phản hồi chạm cơ học mượt mà trên di động */
+button, a, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.btn-press {
+  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.12s ease;
+}
+
+.btn-press:active {
+  transform: scale(0.94);
+  opacity: 0.88;
+}
