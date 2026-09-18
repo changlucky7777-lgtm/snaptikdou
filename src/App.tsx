@@ -257,7 +257,8 @@ export default function App() {
         } else {
           // Luồng bóc tách FFmpeg tốc độ cao cho Douyin / Video dài
           const source = videoUrl || rawAudioUrl;
-          downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}`;
+          const durationParam = media.duration ? `&duration=${media.duration}` : '';
+          downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}${durationParam}`;
         }
 
         triggerNativeBrowserDownload(downloadUrl, pathData.filename);

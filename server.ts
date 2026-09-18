@@ -1439,6 +1439,7 @@ async function fetchMediaWithRetry(
 app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
   const requestedFilename = String(req.query.filename || 'audio.mp3').trim();
+  const duration = Number(req.query.duration || 0);
 
   if (!rawUrl) {
     res.status(400).send('Thiếu URL');
@@ -1453,7 +1454,6 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
 
-  // KHÔNG set Content-Length ước tính (để trình duyệt dùng Chunked Transfer Encoding không bị ngắt)
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader(
     'Content-Disposition',
@@ -1461,6 +1461,12 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   );
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Access-Control-Allow-Origin', '*');
+
+  // Tính toán chính xác kích thước MP3 theo chuẩn CBR 128kbps (16000 bytes/s)
+  if (duration > 0) {
+    const totalBytes = Math.floor(duration * 16000);
+    res.setHeader('Content-Length', totalBytes.toString());
+  }
 
   const isDouyin =
     rawUrl.includes('douyin.com') ||
@@ -1472,20 +1478,28 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // Dùng preset ultrafast và pipe trực tiếp không gánh nặng CPU
-  const ffmpegProcess = spawn('ffmpeg', [
+  // Cấu hình FFmpeg ép đúng chuẩn CBR 128k và cắt đuôi đúng thời lượng
+  const ffmpegArgs = [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '10',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
     '-i', rawUrl,
-    '-vn',                     // Bỏ video
-    '-c:a', 'libmp3lame',      // Chuẩn hóa MP3
-    '-q:a', '2',               // Tốc độ nén biến thiên cực nhanh
-    '-preset', 'ultrafast',    // Tối ưu tốc độ tối đa cho CPU
-    '-f', 'mp3',
-    'pipe:1'
-  ]);
+    '-vn',
+    '-c:a', 'libmp3lame',
+    '-b:a', '128k',
+    '-minrate', '128k',
+    '-maxrate', '128k',
+    '-bufsize', '256k',
+  ];
+
+  if (duration > 0) {
+    ffmpegArgs.push('-t', duration.toString());
+  }
+
+  ffmpegArgs.push('-f', 'mp3', 'pipe:1');
+
+  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
 
   ffmpegProcess.stdout.pipe(res);
   ffmpegProcess.stderr.on('data', () => {});
