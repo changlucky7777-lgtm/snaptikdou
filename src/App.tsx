@@ -218,7 +218,7 @@ export default function App() {
         const initialUrl = primaryUrl || fallbackUrl;
         const backupUrls = media.video.backupUrls || [];
 
-        // Ngưỡng 70MB: Tính theo data_size trả về từ API
+        // 1. Kiểm tra kích thước tệp (ngưỡng 70MB)
         const fileSize = (type === 'video_hd' ? media.video.hdSize : media.video.size) || 0;
         const isOver70MB = fileSize > 70 * 1024 * 1024;
 
@@ -235,7 +235,7 @@ export default function App() {
         }
         const serverDownloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
 
-        // NẾU VIDEO DUNG LƯỢNG LỚN (> 70MB): TẢI STREAM TRỰC TIẾP QUA TRÌNH DUYỆT (0 MB RAM)
+        // 2. PHÂN LUỒNG TẢI THÔNG MINH CHO FILE LỚN (> 70MB) -> TẢI DIRECT STREAM (0 MB RAM)
         if (isOver70MB) {
           setDownloadProgressText('Đang chuyển luồng tải tốc độ cao...');
           triggerNativeBrowserDownload(serverDownloadUrl, pathData.filename);
@@ -244,7 +244,7 @@ export default function App() {
           return;
         }
 
-        // VỚI VIDEO NHỎ (<= 70MB): GIỮ NGUYÊN LUỒNG BLOB CLIENT HIỆN TẠI (NHANH VÀ TIỆN)
+        // 3. VỚI FILE BÌNH THƯỜNG (<= 70MB): GIỮ NGUYÊN LUỒNG BLOB CLIENT (NHANH VÀ CÓ TIẾN TRÌNH)
         setDownloadProgressText(t('loadingVideo'));
         let blob: Blob | null = null;
         if (initialUrl && !initialUrl.startsWith('/api/')) {
@@ -276,13 +276,12 @@ export default function App() {
       } else if (type === 'audio') {
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
 
-        // XỬ LÝ NGUỒN ÂM THANH CHUẨN:
-        // Nếu là Douyin hoặc video TikTok dài > 60s mà link audio bị cắt hoặc không có link audio riêng:
+        // NGUỒN ÂM THANH: 
+        // Nếu là Douyin hoặc video TikTok dài > 60s -> Tự động dùng videoUrl làm nguồn tách âm thanh
         const isVideoLong = (media.duration || 0) > 60;
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
 
-        // Nếu video dài mà link audio ngắn hoặc Douyin không có audio riêng -> dùng videoUrl làm nguồn tách âm thanh
         const effectiveMediaSource =
           (isVideoLong || !rawAudioUrl || media.platform === 'douyin') && videoUrl
             ? videoUrl
@@ -292,11 +291,10 @@ export default function App() {
           throw new Error('Không tìm thấy đường dẫn âm thanh của bài viết này.');
         }
 
-        // TẢI FILE MP3 CHUẨN QUA FFMPEG STREAMING PIPE (KHÔNG BỊ THÀNH FILE VIDEO MP4)
+        // KÍCH HOẠT TẢI STREAM MP3 QUA BACKEND ROUTE VỪA TẠO Ở PHẦN 1
         setDownloadProgressText(t('loadingAudio'));
         const audioStreamUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(effectiveMediaSource)}&filename=${encodeURIComponent(pathData.filename)}`;
 
-        // Kích hoạt trình quản lý download của trình duyệt lưu thẳng file .mp3
         triggerNativeBrowserDownload(audioStreamUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
         setDownloadProgressText(t('downloadCompleted'));
