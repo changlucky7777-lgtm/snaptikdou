@@ -1,9 +1,44 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import LanguageDetector from 'i18next-browser-languagedetector';
+
+export type SupportedLang = 'vi' | 'en' | 'zh' | 'hi' | 'ar' | 'es' | 'fr' | 'id' | 'ru';
+export const SUPPORTED_LANGS: SupportedLang[] = ['vi', 'en', 'zh', 'hi', 'ar', 'es', 'fr', 'id', 'ru'];
+
+// 1. Hàm lấy ngôn ngữ khởi tạo
+export const getInitialLanguage = (): SupportedLang => {
+  if (typeof window === 'undefined') return 'vi';
+
+  // Kiểm tra lựa chọn cũ đã lưu trong localStorage
+  const savedLang = localStorage.getItem('snaptikdou_lang') as SupportedLang;
+  if (savedLang && SUPPORTED_LANGS.includes(savedLang)) {
+    return savedLang;
+  }
+
+  // Nếu lần đầu truy cập: Tự dò ngôn ngữ hệ điều hành/trình duyệt của khách
+  const browserLang = (navigator.language || 'vi').toLowerCase();
+  if (browserLang.startsWith('hi')) return 'hi';
+  if (browserLang.startsWith('zh')) return 'zh';
+  if (browserLang.startsWith('ar')) return 'ar';
+  if (browserLang.startsWith('es')) return 'es';
+  if (browserLang.startsWith('fr')) return 'fr';
+  if (browserLang.startsWith('id')) return 'id';
+  if (browserLang.startsWith('ru')) return 'ru';
+  if (browserLang.startsWith('en')) return 'en';
+
+  return 'vi'; // Mặc định trả về tiếng Việt nếu không trùng khớp
+};
+
+// 2. Hàm lưu ngôn ngữ khi người dùng chuyển đổi
+export const saveLanguage = (lang: SupportedLang) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('snaptikdou_lang', lang);
+    // Lưu thêm vào Cookie (hạn 365 ngày) để hỗ trợ Server-Side nếu cần
+    document.cookie = `snaptikdou_lang=${lang};path=/;max-age=${365 * 24 * 60 * 60};SameSite=Lax`;
+  }
+};
 
 export interface LanguageItem {
-  code: string;
+  code: SupportedLang;
   country: string;
   name: string;
 }
@@ -12,6 +47,7 @@ export const LANGUAGES: LanguageItem[] = [
   { code: 'vi', country: 'vn', name: 'Tiếng Việt' },
   { code: 'en', country: 'us', name: 'English' },
   { code: 'zh', country: 'cn', name: '中文 (简体)' },
+  { code: 'hi', country: 'in', name: 'हिन्दी' },
   { code: 'ar', country: 'sa', name: 'العربية' },
   { code: 'es', country: 'es', name: 'Español' },
   { code: 'fr', country: 'fr', name: 'Français' },
@@ -47,6 +83,14 @@ const resources = {
       postContent: 'Nội dung bài viết',
       postCaption: 'Nội dung bài viết',
       downloadOptions: 'TÙY CHỌN TẢI VỀ',
+      fastDownload: 'Tải xuống tốc độ cao',
+      fastDownloadGuideTitle: 'Hướng dẫn Tải xuống tốc độ cao:',
+      fastDownloadGuideDesc: 'Nhấn vào Tải xuống tốc độ cao => Nhấn vào ô có dấu 3 chấm ở tab Trình chiếu (Media Player) => Download (Tải xuống)',
+      mediaPlayerTitle: 'Trình chiếu Media (Tải tốc độ cao)',
+      videoPlayerTitle: '🎬 Trình chiếu Video (Tải tốc độ cao)',
+      audioPlayerTitle: '🎵 Trình phát Audio MP3 (Tải tốc độ cao)',
+      mediaPlayerTip: '💡 Bấm vào biểu tượng 3 chấm (⋮) trên thanh phát rồi chọn Download (Tải xuống) để lưu file.',
+      audioTrackDefault: 'Bản thu âm thanh',
       downloadVideoHd: 'Tải Video HD Không Logo',
       downloadVideoHdSub: 'MP4 siêu nét, giữ nguyên gốc',
       downloadAudio: 'Tải Audio MP3',
@@ -170,6 +214,14 @@ const resources = {
       postContent: 'Post Caption',
       postCaption: 'Post Caption',
       downloadOptions: 'DOWNLOAD OPTIONS',
+      fastDownload: 'Fast Download',
+      fastDownloadGuideTitle: 'Fast Download Guide:',
+      fastDownloadGuideDesc: 'Click Fast Download => Click the 3 dots in the Media Player tab => Download',
+      mediaPlayerTitle: 'Media Player (Fast Download)',
+      videoPlayerTitle: '🎬 Video Player (Fast Download)',
+      audioPlayerTitle: '🎵 MP3 Audio Player (Fast Download)',
+      mediaPlayerTip: '💡 Click the 3-dot icon (⋮) on the player and select Download to save the file.',
+      audioTrackDefault: 'Audio Track',
       downloadVideoHd: 'Download HD Video Without Logo',
       downloadHdVideo: 'Download HD Video Without Logo',
       downloadVideoHdSub: 'Full HD MP4, original quality',
@@ -294,6 +346,14 @@ const resources = {
       postContent: '作品文案',
       postCaption: '作品文案',
       downloadOptions: '下载选项',
+      fastDownload: '高速下载',
+      fastDownloadGuideTitle: '高速下载指南：',
+      fastDownloadGuideDesc: '点击 高速下载 => 点击播放器右下角 3 个点 (⋮) => 下载',
+      mediaPlayerTitle: '媒体播放器（高速下载）',
+      videoPlayerTitle: '🎬 视频播放器（高速下载）',
+      audioPlayerTitle: '🎵 MP3 音频播放器（高速下载）',
+      mediaPlayerTip: '💡 点击播放栏上的三个点（⋮）图标，然后选择“下载”保存文件。',
+      audioTrackDefault: '音频原声',
       downloadVideoHd: '下载无水印高清视频',
       downloadVideoHdSub: '原画质高清 MP4',
       downloadAudio: '下载 MP3 原声',
@@ -417,6 +477,14 @@ const resources = {
       postContent: 'Descripción de la publicación',
       postCaption: 'Descripción de la publicación',
       downloadOptions: 'OPCIONES DE DESCARGA',
+      fastDownload: 'Descarga rápida',
+      fastDownloadGuideTitle: 'Guía de descarga rápida:',
+      fastDownloadGuideDesc: 'Haga clic en Descarga rápida => Haga clic en los 3 puntos en la pestaña Reproductor => Descargar',
+      mediaPlayerTitle: 'Reproductor de medios (Descarga rápida)',
+      videoPlayerTitle: '🎬 Reproductor de Video (Descarga Rápida)',
+      audioPlayerTitle: '🎵 Reproductor de Audio MP3 (Descarga Rápida)',
+      mediaPlayerTip: '💡 Haz clic en el menú de 3 puntos (⋮) en el reproductor y selecciona Descargar.',
+      audioTrackDefault: 'Pista de audio',
       downloadVideoHd: 'Descargar Video HD Sin Marca',
       downloadVideoHdSub: 'MP4 Full HD, calidad original',
       downloadAudio: 'Descargar Audio MP3',
@@ -540,6 +608,14 @@ const resources = {
       postContent: 'Légende de la publication',
       postCaption: 'Légende de la publication',
       downloadOptions: 'OPTIONS DE TÉLÉCHARGEMENT',
+      fastDownload: 'Téléchargement rapide',
+      fastDownloadGuideTitle: 'Guide de téléchargement rapide :',
+      fastDownloadGuideDesc: 'Cliquez sur Téléchargement rapide => Cliquez sur les 3 points du lecteur => Télécharger',
+      mediaPlayerTitle: 'Lecteur multimédia (Téléchargement rapide)',
+      videoPlayerTitle: '🎬 Lecteur Vidéo (Téléchargement Rapide)',
+      audioPlayerTitle: '🎵 Lecteur Audio MP3 (Téléchargement Rapide)',
+      mediaPlayerTip: '💡 Cliquez sur les 3 points (⋮) sur le lecteur puis choisissez Télécharger.',
+      audioTrackDefault: 'Piste audio',
       downloadVideoHd: 'Télécharger la vidéo HD sans filigrane',
       downloadVideoHdSub: 'MP4 Full HD, qualité originale',
       downloadAudio: 'Télécharger Audio MP3',
@@ -663,6 +739,14 @@ const resources = {
       postContent: 'Deskripsi Postingan',
       postCaption: 'Deskripsi Postingan',
       downloadOptions: 'OPSI UNDUHAN',
+      fastDownload: 'Unduh Kecepatan Tinggi',
+      fastDownloadGuideTitle: 'Panduan Unduhan Kecepatan Tinggi:',
+      fastDownloadGuideDesc: 'Klik Unduh Kecepatan Tinggi => Klik ikon 3 titik di tab Pemutar Media => Unduh (Download)',
+      mediaPlayerTitle: 'Pemutar Media (Unduhan Cepat)',
+      videoPlayerTitle: '🎬 Pemutar Video (Unduh Cepat)',
+      audioPlayerTitle: '🎵 Pemutar Audio MP3 (Unduh Cepat)',
+      mediaPlayerTip: '💡 Klik ikon 3 titik (⋮) pada pemutar lalu pilih Unduh untuk menyimpan file.',
+      audioTrackDefault: 'Trek Audio',
       downloadVideoHd: 'Unduh Video HD Tanpa Watermark',
       downloadVideoHdSub: 'MP4 super jernih, kualitas asli',
       downloadAudio: 'Unduh Audio MP3',
@@ -786,6 +870,14 @@ const resources = {
       postContent: 'Описание публикации',
       postCaption: 'Описание публикации',
       downloadOptions: 'ВАРИАНТЫ СКАЧИВАНИЯ',
+      fastDownload: 'Быстрая загрузка',
+      fastDownloadGuideTitle: 'Руководство по быстрой загрузке:',
+      fastDownloadGuideDesc: 'Нажмите Быстрая загрузка => Нажмите 3 точки в медиаплеере => Скачать',
+      mediaPlayerTitle: 'Медиаплеер (Быстрая загрузка)',
+      videoPlayerTitle: '🎬 Видеоплеер (Быстрая загрузка)',
+      audioPlayerTitle: '🎵 MP3 Аудиоплеер (Быстрая загрузка)',
+      mediaPlayerTip: '💡 Нажмите на значок с 3 точками (⋮) на плеере и выберите «Скачать».',
+      audioTrackDefault: 'Аудиозапись',
       downloadVideoHd: 'Скачать видео HD без водяного знака',
       downloadVideoHdSub: 'MP4 высокого качества, оригинал',
       downloadAudio: 'Скачать MP3 аудио',
@@ -909,6 +1001,14 @@ const resources = {
       postContent: 'نص المنشور',
       postCaption: 'نص المنشور',
       downloadOptions: 'خيارات التنزيل',
+      fastDownload: 'تحميل عالي السرعة',
+      fastDownloadGuideTitle: 'دليل التحميل عالي السرعة:',
+      fastDownloadGuideDesc: 'اضغط على تحميل عالي السرعة => اضغط على النقاط الثلاث في مشغل الوسائط => تنزيل',
+      mediaPlayerTitle: 'مشغل الوسائط (تحميل سريع)',
+      videoPlayerTitle: '🎬 مشغل الفيديو (تحميل سريع)',
+      audioPlayerTitle: '🎵 مشغل صوت MP3 (تحميل سريع)',
+      mediaPlayerTip: '💡 اضغط على أيقونة النقاط الثلاث (⋮) في شريط التشغيل ثم اختر تنزيل.',
+      audioTrackDefault: 'المسار الصوتي',
       downloadVideoHd: 'تحميل فيديو HD بدون علامة مائية',
       downloadVideoHdSub: 'MP4 فائق الدقة، جودة أصلية',
       downloadAudio: 'تحميل صوت MP3',
@@ -1005,20 +1105,150 @@ const resources = {
       },
     },
   },
+  hi: {
+    translation: {
+      tagline: 'बिना वॉटरमार्क کے TikTok और Douyin वीडियो डाउनलोड करें, HD क्वालिटी',
+      sloganSub: 'बिना वॉटरमार्क के TikTok और Douyin वीडियो, MP3 और फोटो एल्बम डाउनलोड करें',
+      tabDownload: 'डाउनलोड',
+      tabHistory: 'इतिहास',
+      btnOpenNewTab: 'नया टैब खोलें',
+      btnClearHistory: 'इतिहास साफ़ करें',
+      statTotalDownloads: 'कुल डाउनलोड',
+      statSavedChannels: 'सहेजे गए चैनल',
+      statVideos: 'वीडियो',
+      statPhotosAudio: 'फोटो स्लाइड और ऑडियो',
+      searchHistoryPlaceholder: 'चैनल, शीर्षक या लिंक द्वारा खोजें...',
+      filterAll: 'सभी',
+      filterVideo: 'वीडियो',
+      filterAudio: 'ऑडियो',
+      filterPhoto: 'फोटो स्लाइड',
+      btnRedownload: 'पुनः डाउनलोड करें',
+      inputPlaceholder: 'TikTok या Douyin लिंक यहाँ पेस्ट करें...',
+      btnPaste: 'पेस्ट करें',
+      pasted: 'पेस्ट हो गया!',
+      btnExtract: 'डाउनलोड लिंक प्राप्त करें',
+      extracting: 'प्रोसेस हो रहा है...',
+      extractingData: 'डेटा प्राप्त किया जा रहा है...',
+      postContent: 'पोस्ट का शीर्षक',
+      postCaption: 'पोस्ट का शीर्षक',
+      downloadOptions: 'डाउनलोड विकल्प',
+      fastDownload: 'उच्च गति डाउनलोड',
+      fastDownloadGuideTitle: 'उच्च गति डाउनलोड गाइड:',
+      fastDownloadGuideDesc: 'उच्च गति डाउनलोड पर क्लिक करें => मीडिया प्लेयर में 3 डॉट्स पर क्लिक करें => डाउनलोड करें',
+      mediaPlayerTitle: 'मीडिया प्लेयर (फास्ट डाउनलोड)',
+      videoPlayerTitle: '🎬 वीडियो प्लेयर (फास्ट डाउनलोड)',
+      audioPlayerTitle: '🎵 एमपी3 ऑडियो प्लेयर (फास्ट डाउनलोड)',
+      mediaPlayerTip: '💡 प्लेयर पर 3-डॉट आइकन (⋮) पर क्लिक करें और डाउनलोड चुनें।',
+      audioTrackDefault: 'ऑडियो ट्रैक',
+      downloadVideoHd: 'HD वीडियो डाउनलोड करें (बिना वॉटरमार्क)',
+      downloadHdVideo: 'HD वीडियो डाउनलोड करें (बिना वॉटरमार्क)',
+      downloadVideoHdSub: 'फुल HD MP4, मूल गुणवत्ता',
+      downloadAudio: 'MP3 ऑडियो डाउनलोड करें',
+      downloadAudioSub: 'मूल ध्वनि और बैकग्राउंड संगीत',
+      loadingAudio: 'MP3 ऑडियो डाउनलोड हो रहा है...',
+      loadingVideo: 'HD वीडियो डाउनलोड हो रहा है...',
+      downloadPhotos: 'सभी फ़ोटो डाउनलोड करें (ZIP)',
+      downloadAllPhotosCount: 'सभी {{count}} फ़ोटो डाउनलोड करें',
+      photoUnit: 'फ़ोटो',
+      downloadPhotoSingle: 'फ़ोटो डाउनलोड करें',
+      copyLink: 'डाउनलोड लिंक कॉपी करें',
+      copied: 'कॉपी हो गया!',
+      copiedLink: 'लिंक कॉपी हो गया!',
+      openPlatform: 'मूल पोस्ट खोलें',
+      openVideo: 'वीडियो चलाएं',
+      downloadingProgress: 'डाउनलोड हो रहा है: {{loaded}}/{{total}} ({{percent}}%)...',
+      compressingPhotos: 'फ़ोटो कंप्रेस हो रहे हैं (ZIP)...',
+      downloadingPhoto: 'फ़ोटो डाउनलोड हो रहा है...',
+      processingDownload: 'डाउनलोड प्रोसेस हो रहा है...',
+      pauseDownload: 'रोकें',
+      cancelDownload: 'रद्द करें',
+      confirmClearHistory: 'क्या आप वाकई सारा इतिहास साफ़ करना चाहते हैं?',
+      emptyHistory: 'अभी तक कोई डाउनलोड इतिहास नहीं है',
+      alertEmptyLink: 'कृपया पहले TikTok या Douyin लिंक दर्ज करें!',
+      alertInvalidLink: 'कृपया एक वैध TikTok या Douyin लिंक दर्ज करें!',
+      errEmptyUrl: 'कृपया पहले एक लिंक पेस्ट करें!',
+      errInvalidUrl: 'अमान्य लिंक। कृपया अपना Douyin या TikTok URL जांचें!',
+      errExtractFailed: 'डेटा प्राप्त करने में विफल। कृपया लिंक पुनः जांचें!',
+      errorExtractFailed: 'डेटा प्राप्त करने में विफल। कृपया लिंक पुनः जांचें!',
+      errorPleasePasteLink: 'कृपया पहले एक लिंक पेस्ट करें!',
+      errNetwork: 'नेटवर्क त्रुटि। कृपया पुनः प्रयास करें!',
+      errorDetected: 'त्रुटि पाई गई:',
+      btnCopy: 'कॉपी करें',
+      btnClose: 'बंद करें',
+      btnDownloadSinglePhoto: 'यह फोटो सहेजें',
+      downloadCompleted: 'डाउनलोड पूरा हुआ!',
+      footerEmail: 'सहायता ईमेल:',
+      footerSocial: 'सोशल मीडिया',
+      footerLegal: 'कानूनी',
+      termsOfService: 'नियम व शर्तें',
+      privacyPolicy: 'गोपनीयता नीति',
+      cookiePolicy: 'कुकीज़ नीति',
+      disclaimerTitle: 'अस्वीकरण',
+      disclaimer: 'यह सेवा ByteDance या TikTok से संबद्ध नहीं है। हम अपने सर्वर पर कोई मीडिया सामग्री होस्ट नहीं करते हैं।',
+      termsContent: {
+        title: 'नियम व शर्तें',
+        intro: 'SnapTikDou में आपका स्वागत है। हमारी सेवा का उपयोग करके, आप निम्नलिखित शर्तों का पालन करने के लिए सहमत हैं:',
+        sec1_title: '1. उपयोग का उद्देश्य',
+        sec1_desc: 'SnapTikDou व्यक्तिगत, शैक्षिक और गैर-व्यावसायिक बैकअप उद्देश्यों के लिए TikTok/Douyin से वीडियो, ऑडियो और छवियां डाउनलोड करने के लिए उपकरण प्रदान करता है।',
+        sec2_title: '2. बौद्धिक संपदा अधिकार',
+        sec2_desc: 'सभी मीडिया सामग्री उनके मूल रचनाकारों का कॉपीराइट रहती है। यदि डाउनलोड की गई सामग्री का व्यावसायिक रूप से उपयोग किया जाता है या कॉपीराइट का उल्लंघन किया जाता है, तो उपयोगकर्ता पूरी जिम्मेदारी लेते हैं।',
+        sec3_title: '3. सेवा सीमाएं',
+        sec3_desc: 'हम अपने सर्वर पर कोई भी मीडिया फ़ाइलें होस्ट या स्टोर नहीं करते हैं। उपकरण केवल मूल प्लेटफ़ॉर्म द्वारा प्रदान किए गए सीधे लिंक को निकालता है।',
+      },
+      privacyContent: {
+        title: 'गोपनीयता नीति',
+        intro: 'SnapTikDou आपकी गोपनीयता की रक्षा के लिए प्रतिबद्ध है। हम अनावश्यक व्यक्तिगत जानकारी एकत्र न करने के सिद्धांत का कड़ाई से पालन करते हैं:',
+        sec1_title: '1. डेटा संग्रह',
+        sec1_desc: 'हमें उपयोगकर्ता खातों की आवश्यकता नहीं है, हम पहचान योग्य कुकीज़ संग्रहीत नहीं करते हैं, और हम आपके द्वारा सबमिट किए गए लिंक को ट्रैक नहीं करते हैं।',
+        sec2_title: '2. लिंक और मीडिया प्रोसेसिंग',
+        sec2_desc: 'सबमिट किए गए लिंक केवल मीडिया URL को निकालने के लिए अस्थायी मेमोरी (RAM) में संसाधित किए जाते हैं और तुरंत बाद छोड़ दिए जाते हैं।',
+        sec3_title: '3. कनेक्शन सुरक्षा',
+        sec3_desc: 'आपके डिवाइस और हमारे सर्वर के बीच सभी संचार सुरक्षित HTTPS/SSL प्रोटोकॉल के माध्यम से पूरी तरह से एन्क्रिप्ट किए गए हैं।',
+      },
+      cookieContent: {
+        title: 'कुकी नीति',
+        intro: 'SnapTikDou एक सुरक्षित, पारदर्शी ब्राउज़िंग अनुभव प्रदान करने के लिए प्रतिबद्ध है जो उपयोगकर्ता की गोपनीयता का पूरा सम्मान करता है:',
+        sec1_title: '1. हम कुकीज़ का उपयोग कैसे करते हैं',
+        sec1_desc: 'हम ट्रैकिंग या व्यक्तिगत डेटा एकत्र करने के लिए कुकीज़ का उपयोग नहीं करते हैं। हम केवल आपकी भाषा वरीयताओं को सहेजने के लिए ब्राउज़र के लोकल स्टोरेज पर निर्भर करते हैं।',
+        sec2_title: '2. तृतीय पक्ष कुकीज़',
+        sec2_desc: 'हमारे प्लेटफ़ॉर्म में कोई तृतीय-पक्ष विज्ञापन ट्रैकिंग कुकीज़ नहीं हैं। लिंक स्वतंत्र रूप से बिना किसी ट्रैकिंग के संसाधित किए जाते हैं।',
+        sec3_title: '3. वरीयता नियंत्रण',
+        sec3_desc: 'आप अपने ब्राउज़र की गोपनीयता सेटिंग्स के माध्यम से किसी भी समय कुकीज़ और कैश साफ़ कर सकते हैं।',
+      },
+      disclaimerContent: {
+        title: 'अस्वीकरण',
+        intro: 'SnapTikDou सेवाओं का उपयोग करने से पहले कृपया निम्नलिखित अस्वीकरण सूचना को ध्यान से पढ़ें:',
+        sec1_title: '1. असंबद्धता',
+        sec1_desc: 'SnapTikDou एक स्वतंत्र उपकरण है और यह ByteDance, TikTok, या Douyin से किसी भी तरह से संबद्ध, प्रायोजित या समर्थित नहीं है।',
+        sec2_title: '2. कोई सामग्री होस्टिंग नहीं',
+        sec2_desc: 'हम अपने सर्वर पर किसी भी वीडियो या ऑडियो फ़ाइल को स्टोर, होस्ट या प्रकाशित नहीं करते हैं। सामग्री सीधे मूल प्लेटफ़ॉर्म सर्वर से लाई जाती है।',
+        sec3_title: '3. उपयोगकर्ता की जिम्मेदारी',
+        sec3_desc: 'डाउनलोड की गई सामग्री का उपयोग कैसे किया जाता है, इसके लिए उपयोगकर्ता पूरी तरह उत्तरदायी है, और हम किसी भी कॉपीराइट उल्लंघन के लिए उत्तरदायित्व से इनकार करते हैं।',
+      },
+      dmcaContent: {
+        title: 'DMCA और कॉपीराइट नीति',
+        intro: 'SnapTikDou सामग्री रचनाकारों के बौद्धिक संपदा अधिकारों का सम्मान करता है और डिजिटल मिलेनियम कॉपीराइट एक्ट (DMCA) का अनुपालन करता है:',
+        sec1_title: '1. सामग्री स्वामित्व',
+        sec1_desc: 'हम अपने सर्वर पर किसी भी मीडिया के स्वामी नहीं हैं, न ही कॉपी या स्टोर करते हैं। सभी कॉपीराइट मूल प्लेटफ़ॉर्म पर उनके संबंधित स्वामियों के हैं।',
+        sec2_title: '2. हटाने की सूचनाएं',
+        sec2_desc: 'यदि आप एक कॉपीराइट स्वामी हैं और अपनी सामग्री के निष्कर्षण को ब्लॉक करना चाहते हैं, तो कृपया स्वामित्व के प्रमाण के साथ हमें ईमेल करें।',
+        sec3_title: '3. की गई कार्रवाई',
+        sec3_desc: 'वैध नोटिस प्राप्त होने पर, हम 24 से 48 व्यावसायिक घंटों के भीतर संबंधित लिंक को ब्लॉक और अक्षम कर देंगे।',
+      },
+    },
+  },
 };
 
+const initialLng = getInitialLanguage();
+
 i18n
-  .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources,
+    lng: initialLng,
     fallbackLng: 'vi',
     interpolation: {
       escapeValue: false,
-    },
-    detection: {
-      order: ['localStorage', 'navigator'],
-      caches: ['localStorage'],
     },
   });
 

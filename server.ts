@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import path from 'path';
 import zlib from 'zlib';
+import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { createServer as createViteServer } from 'vite';
@@ -13,6 +14,15 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Endpoint kiểm tra sức khỏe hệ thống (Health Check)
+app.get('/api/health', (req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
+});
 
 const CLOUDFLARE_WORKER_URL =
   process.env.CLOUDFLARE_WORKER_URL || 'https://douyin-resolver.changlucky7777.workers.dev';
@@ -1422,6 +1432,199 @@ async function fetchMediaWithRetry(
   }
   return null;
 }
+
+// Endpoint chuyển tiếp luồng media (Audio MP3 / Video MP4) với CORS và Range header chuẩn (0% CPU, 0 MB RAM)
+const handleStreamMedia = async (req: Request, res: Response) => {
+  const rawUrl = String(req.query.url || '').trim();
+  const mediaType = String(req.query.type || 'audio').trim().toLowerCase();
+  const rawTitle = String(req.query.title || 'media').trim();
+  const postUrl = String(req.query.postUrl || '').trim();
+
+  if (!rawUrl) {
+    res.status(400).send('Thiếu tham số URL');
+    return;
+  }
+
+  const isAudio = mediaType === 'audio';
+
+  try {
+    const cleanTitle = (rawTitle || (isAudio ? 'audio' : 'video'))
+      .replace(/[^\w\s\u4e00-\u9fa5\u00C0-\u1EF9_.-]/gi, '')
+      .replace(/\s+/g, '_')
+      .trim()
+      .slice(0, 80) || (isAudio ? 'audio' : 'video');
+    const ext = isAudio ? '.mp3' : '.mp4';
+    const safeTitle = cleanTitle.endsWith(ext) ? cleanTitle : `${cleanTitle}${ext}`;
+    const encodedSafeTitle = encodeURIComponent(safeTitle);
+
+    const checkIsDouyin = (u: string) =>
+      Boolean(u) &&
+      (isDouyinUrl(u) ||
+        u.includes('zjcdn.com') ||
+        u.includes('douyinvod.com') ||
+        u.includes('byteimg.com') ||
+        u.includes('douyinpic.com') ||
+        u.includes('douyinstatic.com') ||
+        u.includes('douyin.com') ||
+        u.includes('bytedance.com') ||
+        u.includes('snssdk.com') ||
+        u.includes('ixigua.com') ||
+        u.includes('amemv.com') ||
+        u.includes('pstatp.com'));
+
+    const isDouyin = checkIsDouyin(rawUrl) || checkIsDouyin(postUrl);
+    const requestedRange = req.headers.range as string | undefined;
+
+    let mediaResponse = await fetchMediaWithRetry(rawUrl, { isDouyin, range: requestedRange });
+
+    if (!isValidMediaResponse(mediaResponse) || !mediaResponse) {
+      try {
+        const directRes = await fetch(rawUrl, {
+          headers: {
+            'User-Agent': isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT,
+            Referer: isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/',
+            ...(requestedRange ? { Range: requestedRange } : {}),
+            Accept: '*/*',
+          },
+        });
+        if (isValidMediaResponse(directRes)) {
+          mediaResponse = directRes;
+        }
+      } catch {}
+    }
+
+    if (!isValidMediaResponse(mediaResponse) || !mediaResponse) {
+      res.status(502).send('Không thể tải luồng media');
+      return;
+    }
+
+    // Ép Header chuẩn để trình duyệt MỞ NÚT DOWNLOAD và KHÔNG BỊ 0:00
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Content-Disposition, Accept-Ranges');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', isAudio ? 'audio/mpeg' : 'video/mp4');
+    res.setHeader('Content-Disposition', `inline; filename="${safeTitle}"; filename*=UTF-8''${encodedSafeTitle}`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    const contentLength = mediaResponse.headers.get('content-length');
+    if (contentLength && Number(contentLength) > 0) {
+      res.setHeader('Content-Length', contentLength);
+    }
+
+    if (req.method === 'HEAD' || req.method === 'OPTIONS') {
+      res.status(200).end();
+      return;
+    }
+
+    if (requestedRange && mediaResponse.status === 206) {
+      res.status(206);
+      const cr = mediaResponse.headers.get('content-range');
+      if (cr) res.setHeader('Content-Range', cr);
+    } else {
+      res.status(200);
+    }
+
+    req.on('close', () => {
+      if (!res.writableEnded) res.end();
+    });
+
+    const streamToPipe =
+      typeof (mediaResponse.body as any)?.getReader === 'function'
+        ? Readable.fromWeb(mediaResponse.body as any)
+        : mediaResponse.body;
+    await pipeline(streamToPipe as any, res);
+  } catch (error) {
+    console.error('Lỗi stream media:', error);
+    if (!res.headersSent) {
+      res.status(500).send('Lỗi máy chủ khi truyền luồng');
+    } else if (!res.writableEnded) {
+      res.end();
+    }
+  }
+};
+
+app.get('/api/stream-media', handleStreamMedia);
+app.get('/api/stream-audio', (req: Request, res: Response) => {
+  req.query.type = 'audio';
+  return handleStreamMedia(req, res);
+});
+
+// Endpoint chuyển đổi luồng trực tiếp (Streaming Remux) qua ffmpeg thành chuẩn MP3 (0 MB RAM)
+app.get('/api/audio-stream', (req: Request, res: Response) => {
+  const rawUrl = String(req.query.url || '').trim();
+  const rawTitle = String(req.query.title || 'audio').trim();
+  const postUrl = String(req.query.postUrl || '').trim();
+
+  if (!rawUrl) {
+    res.status(400).send('Missing media URL');
+    return;
+  }
+
+  const cleanTitle = (rawTitle || 'audio')
+    .replace(/[^\w\s\u4e00-\u9fa5\u00C0-\u1EF9_.-]/gi, '')
+    .replace(/\s+/g, '_')
+    .trim()
+    .slice(0, 80) || 'audio';
+  const safeTitle = cleanTitle.endsWith('.mp3') ? cleanTitle : `${cleanTitle}.mp3`;
+  const encodedSafeTitle = encodeURIComponent(safeTitle);
+
+  const isDouyin = Boolean(
+    isDouyinUrl(rawUrl) ||
+    isDouyinUrl(postUrl) ||
+    rawUrl.includes('douyin') ||
+    rawUrl.includes('zjcdn.com') ||
+    rawUrl.includes('douyinvod.com')
+  );
+
+  const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
+  const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
+
+  // Thiết lập header âm thanh chuẩn để kích hoạt nút Download trên trình duyệt
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept');
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}"; filename*=UTF-8''${encodedSafeTitle}`);
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  if (req.method === 'HEAD' || req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  // Dùng ffmpeg tách âm thanh trực tiếp từ URL stream của Douyin/TikTok (0 MB RAM)
+  const ffmpegProcess = spawn('ffmpeg', [
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_delay_max', '5',
+    '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
+    '-i', rawUrl,
+    '-vn',                     // Loại bỏ hoàn toàn hình ảnh
+    '-acodec', 'libmp3lame',   // Đảm bảo chuẩn MP3 tương thích mọi thiết bị
+    '-b:a', '128k',            // Tốc độ truyền ổn định, nhẹ server
+    '-f', 'mp3',
+    'pipe:1'
+  ]);
+
+  ffmpegProcess.stdout.pipe(res);
+
+  ffmpegProcess.stderr.on('data', () => {}); // Bỏ qua log để tối ưu hiệu năng
+
+  ffmpegProcess.on('error', (err) => {
+    console.error('Lỗi khởi chạy FFmpeg stream:', err);
+    if (!res.headersSent) {
+      res.status(500).send('Lỗi máy chủ khi chuyển đổi luồng');
+    }
+  });
+
+  req.on('close', () => {
+    ffmpegProcess.kill('SIGKILL'); // Hủy tiến trình ngay khi client ngắt kết nối
+  });
+});
 
 app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();

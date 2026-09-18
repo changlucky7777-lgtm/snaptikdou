@@ -1,8 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LANGUAGES } from '../i18n';
+import { LANGUAGES, saveLanguage, SupportedLang } from '../i18n';
 
-export const LanguageSelector: React.FC = () => {
+interface LanguageSelectorProps {
+  onLanguageChange?: (lang: SupportedLang) => void;
+}
+
+export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ onLanguageChange }) => {
   const { i18n } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -12,8 +16,12 @@ export const LanguageSelector: React.FC = () => {
     LANGUAGES.find((l) => i18n.language && i18n.language.startsWith(l.code)) ||
     LANGUAGES[0];
 
-  const handleSelectLanguage = (code: string) => {
+  const handleSelectLanguage = (code: SupportedLang) => {
     i18n.changeLanguage(code);
+    saveLanguage(code);
+    if (onLanguageChange) {
+      onLanguageChange(code);
+    }
     setIsOpen(false);
   };
 

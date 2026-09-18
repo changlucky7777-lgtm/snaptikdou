@@ -6,6 +6,7 @@ import { MediaResultCard, MediaResultCardSkeleton } from './components/MediaResu
 import { HistorySection } from './components/HistorySection';
 import { TikTokMediaItem, PathConfig, HistoryRecord } from './types';
 import { DEFAULT_PATH_CONFIG, buildFilePath } from './utils/pathBuilder';
+import { getInitialLanguage, saveLanguage, SupportedLang } from './i18n';
 import {
   streamFetchBlob,
   triggerBlobDownload,
@@ -25,7 +26,15 @@ interface DirectDownloadInfo {
 }
 
 export default function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [lang, setLang] = useState<SupportedLang>(() => getInitialLanguage());
+
+  const handleLanguageChange = (newLang: SupportedLang) => {
+    setLang(newLang);
+    i18n.changeLanguage(newLang);
+    saveLanguage(newLang);
+  };
+
   const [activeTab, setActiveTab] = useState<'download' | 'history'>('download');
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
@@ -279,7 +288,9 @@ export default function App() {
           addHistoryRecord(media, pathData.fullPath, type, 'video');
         }
       } else if (type === 'audio') {
-        const audioUrl = media.audio?.url || (media.mediaType === 'photos' ? media.video?.noWatermark : '');
+        const rawAudioUrl = media.audio?.url;
+        const videoUrl = media.video?.hd || media.video?.noWatermark || media.url;
+        const audioUrl = (media.mediaType === 'photos' && rawAudioUrl) ? rawAudioUrl : (videoUrl || rawAudioUrl);
         if (!audioUrl) {
           throw new Error('Không tìm thấy đường dẫn âm thanh MP3 của bài viết này.');
         }
@@ -603,7 +614,7 @@ export default function App() {
             </button>
 
             {/* Nút: Chọn Ngôn Ngữ */}
-            <LanguageSelector />
+            <LanguageSelector onLanguageChange={handleLanguageChange} />
 
             {/* Nút: Mở Tab Mới (Dùng để kiểm tra giao diện) */}
             <button

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Download,
@@ -40,6 +40,8 @@ interface MediaResultCardProps {
   theme?: 'dark' | 'light';
 }
 
+const MAX_DIRECT_DOWNLOAD_BYTES = 70 * 1024 * 1024; // 70 MB
+
 export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   media,
   onDownloadSingle,
@@ -58,6 +60,97 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isPlayingVideo, setIsVideoPlaying] = useState(false);
+  const [isLargeFile, setIsLargeFile] = useState<boolean>(false);
+  // Quản lý trạng thái mở modal và loại media ('video' | 'audio' | null)
+  const [modalType, setModalType] = useState<'video' | 'audio' | null>(null);
+
+  // Tự động kiểm tra kích thước file khi có dữ liệu video mới bằng request HEAD (0 MB RAM)
+  useEffect(() => {
+    const checkMediaSize = async () => {
+      // 1. Kiểm tra kích thước có sẵn trong metadata
+      if (media.video?.hdSize && media.video.hdSize > MAX_DIRECT_DOWNLOAD_BYTES) {
+        setIsLargeFile(true);
+        return;
+      }
+      if (media.video?.size && media.video.size > MAX_DIRECT_DOWNLOAD_BYTES) {
+        setIsLargeFile(true);
+        return;
+      }
+
+      const targetUrl = media.video?.hd || media.video?.noWatermark || media.url;
+      if (!targetUrl || media.mediaType === 'photos') {
+        setIsLargeFile(false);
+        return;
+      }
+
+      try {
+        // Request HEAD siêu nhẹ: Chỉ đọc thẻ Content-Length, không tải dữ liệu (0 MB RAM)
+        const res = await fetch(targetUrl, { method: 'HEAD' });
+        const contentLength = res.headers.get('content-length');
+
+        if (contentLength) {
+          const bytes = parseInt(contentLength, 10);
+          setIsLargeFile(bytes > MAX_DIRECT_DOWNLOAD_BYTES);
+        } else {
+          setIsLargeFile(false);
+        }
+      } catch (err) {
+        console.warn('Không đọc được content-length bằng HEAD trực tiếp:', err);
+        try {
+          const proxyHeadUrl = `/api/tiktok/stream-redirect?url=${encodeURIComponent(targetUrl)}&postUrl=${encodeURIComponent(media.url || '')}`;
+          const proxyRes = await fetch(proxyHeadUrl, { method: 'HEAD' });
+          const len = proxyRes.headers.get('content-length');
+          if (len) {
+            const bytes = parseInt(len, 10);
+            setIsLargeFile(bytes > MAX_DIRECT_DOWNLOAD_BYTES);
+            return;
+          }
+        } catch {
+          // Safe default
+        }
+        setIsLargeFile(false);
+      }
+    };
+
+    checkMediaSize();
+  }, [media.video?.hd, media.video?.noWatermark, media.video?.hdSize, media.video?.size, media.url, media.mediaType]);
+
+  // Hàm điều phối tải thông minh phân tách độc lập Video và Audio
+  const handleCardDownload = (type: 'video' | 'audio') => {
+    if (isLargeFile) {
+      // Nếu file > 70MB: Bật Modal theo đúng loại tương ứng
+      setModalType(type);
+    } else {
+      // Nếu file <= 70MB: Chạy hàm tải trực tiếp 1-click hiện có
+      onDownloadSingle(media, type === 'video' ? 'video_hd' : 'audio');
+    }
+  };
+
+  // Xác định URL audio chuẩn nhất: lấy đầy đủ âm thanh gốc và remux sang MP3 bằng FFmpeg stream trực tiếp
+  const getAudioSourceUrl = () => {
+    const rawAudioUrl = media.audio?.url;
+    const videoUrl = media.video?.hd || media.video?.noWatermark || media.url;
+
+    // Nếu là album ảnh photos thì dùng rawAudioUrl, nếu là video thì ưu tiên luồng video để giữ trọn âm thanh gốc dài
+    const sourceMedia = (media.mediaType === 'photos' && rawAudioUrl) ? rawAudioUrl : (videoUrl || rawAudioUrl || media.url);
+
+    // Bọc qua endpoint audio-stream remux MP3
+    const encodedMediaUrl = encodeURIComponent(sourceMedia || '');
+    const encodedTitle = encodeURIComponent(media.title || 'audio');
+    const encodedPostUrl = encodeURIComponent(media.url || '');
+
+    return `/api/audio-stream?url=${encodedMediaUrl}&title=${encodedTitle}&postUrl=${encodedPostUrl}`;
+  };
+
+  // Xác định URL video chuẩn stream với CORS và Range headers
+  const getVideoSourceUrl = () => {
+    const videoUrl = media.video?.hd || media.video?.noWatermark || media.url;
+    const encodedMediaUrl = encodeURIComponent(videoUrl || '');
+    const encodedTitle = encodeURIComponent(media.title || 'video');
+    const encodedPostUrl = encodeURIComponent(media.url || '');
+
+    return `/api/stream-media?type=video&url=${encodedMediaUrl}&title=${encodedTitle}&postUrl=${encodedPostUrl}`;
+  };
 
   const handleCopyDirectLink = (url: string) => {
     let finalUrl = url;
@@ -529,20 +622,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                     )}
                   </div>
                 )}
-
-                {/* Vị trí số 4: Nút Tải xuống tốc độ cao (chỉ xuất hiện sau khi quá trình tải thông thường không tải được) */}
-                {directDownloadInfo && !isDownloading && (
-                  <button
-                    id="btn-direct-download-pos4"
-                    type="button"
-                    onClick={onDirectDownload}
-                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 border border-emerald-400/40 shadow-md transition-all duration-200 animate-in fade-in slide-in-from-right-3 cursor-pointer"
-                    title="Tải xuống tốc độ cao"
-                  >
-                    <Rocket className="w-3.5 h-3.5" />
-                    <span>Tải xuống tốc độ cao</span>
-                  </button>
-                )}
               </div>
             </div>
 
@@ -610,7 +689,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 <button
                   id="btn-download-video-hd"
                   type="button"
-                  onClick={() => onDownloadSingle(media, 'video_hd')}
+                  onClick={() => handleCardDownload('video')}
                   disabled={isDownloading}
                   title={t('downloadVideoHd')}
                   className={`group relative flex items-center justify-between p-4 rounded-2xl border text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer ${
@@ -659,7 +738,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               <button
                 id="btn-download-audio"
                 type="button"
-                onClick={() => onDownloadSingle(media, 'audio')}
+                onClick={() => handleCardDownload('audio')}
                 disabled={isDownloading || (!media.audio?.url && !media.video?.noWatermark)}
                 title={t('downloadAudio')}
                 className={`group relative flex items-center justify-between p-4 rounded-2xl border text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 ${
@@ -760,33 +839,110 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             </a>
           </div>
 
-          {/* Hướng dẫn tải về khi nút Tải xuống tốc độ cao xuất hiện */}
-          {directDownloadInfo && !isDownloading && (
-            <div
-              id="direct-download-guide-box"
-              className={`p-3.5 rounded-xl border text-xs sm:text-sm flex items-start gap-3 shadow-md animate-in fade-in slide-in-from-top-2 duration-300 ${
-                isLight
-                  ? 'bg-emerald-50/90 border-emerald-300 text-slate-700 shadow-emerald-500/5'
-                  : 'bg-emerald-950/40 border-emerald-500/40 text-slate-200 shadow-emerald-950/30'
-              }`}
-            >
-              <div className="flex-1 space-y-1">
-                <div
-                  className={`font-bold flex items-center gap-1.5 ${
-                    isLight ? 'text-emerald-800' : 'text-emerald-400'
-                  }`}
-                >
-                  <span>💡 Hướng dẫn Tải xuống tốc độ cao:</span>
-                </div>
-                <div className={`text-xs sm:text-[13px] leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                  Nhấn vào <strong className={`${isLight ? 'text-emerald-700' : 'text-emerald-300'} font-semibold`}>Tải xuống tốc độ cao</strong> <span className={`${isLight ? 'text-emerald-600' : 'text-emerald-400'} font-bold mx-1`}>=&gt;</span> Nhấn vào ô có <strong className={`${isLight ? 'text-slate-900' : 'text-white'} font-semibold`}>dấu 3 chấm</strong> ở tab Trình chiếu (Media Player) <span className={`${isLight ? 'text-emerald-600' : 'text-emerald-400'} font-bold mx-1`}>=&gt;</span> <strong className={`${isLight ? 'text-emerald-700' : 'text-emerald-300'} font-semibold`}>Download (Tải xuống)</strong>
-                </div>
-              </div>
-            </div>
-          )}
-
         </div>
       </div>
+
+      {/* POPUP TRÌNH CHIẾU MEDIA NỔI NGAY TRÊN TRANG (PHÂN TÁCH VIDEO VÀ AUDIO MP3) */}
+      {modalType && (
+        <div
+          id="media-player-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setModalType(null)}
+        >
+          <div
+            className={`relative w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl border animate-in fade-in zoom-in-95 duration-150 ${
+              isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Popup */}
+            <div
+              className={`flex items-center justify-between px-5 py-3.5 border-b ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-850 border-slate-800'
+              }`}
+            >
+              <span
+                className={`font-bold text-sm flex items-center gap-2 ${
+                  isLight ? 'text-slate-800' : 'text-white'
+                }`}
+              >
+                {modalType === 'video'
+                  ? t('videoPlayerTitle') || '🎬 Trình chiếu Video (Tải tốc độ cao)'
+                  : t('audioPlayerTitle') || '🎵 Trình phát Audio MP3 (Tải tốc độ cao)'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setModalType(null)}
+                className={`font-bold text-xl w-8 h-8 flex items-center justify-center rounded-full transition-colors cursor-pointer ${
+                  isLight
+                    ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-200'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                }`}
+                title={t('btnClose') || 'Đóng'}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Nội dung Media linh hoạt */}
+            <div className="p-6 bg-slate-900 flex flex-col items-center justify-center min-h-[220px]">
+              {modalType === 'video' ? (
+                /* TRÌNH PHÁT VIDEO NATIVE */
+                <video
+                  src={getVideoSourceUrl()}
+                  controls
+                  autoPlay
+                  crossOrigin="anonymous"
+                  className="w-full max-h-[65vh] object-contain rounded-lg shadow"
+                />
+              ) : (
+                /* TRÌNH PHÁT AUDIO MP3 NATIVE */
+                <div className="w-full flex flex-col items-center py-4">
+                  {/* Avatar / Đĩa nhạc xoay nhẹ */}
+                  <div className="w-24 h-24 rounded-full border-4 border-emerald-500/30 overflow-hidden mb-5 shadow-lg flex items-center justify-center bg-slate-800">
+                    <img
+                      src={media.author?.avatar || media.cover}
+                      alt="Audio thumbnail"
+                      className="w-full h-full object-cover animate-pulse"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+
+                  <p className="text-white text-sm font-medium mb-4 text-center px-4 line-clamp-1">
+                    {media.title || t('audioTrackDefault') || 'Bản thu âm thanh'}
+                  </p>
+
+                  {/* Thanh điều khiển Audio Native của trình duyệt (Có menu 3 chấm tải xuống, 0 MB RAM) */}
+                  <audio
+                    src={getAudioSourceUrl()}
+                    controls
+                    autoPlay
+                    crossOrigin="anonymous"
+                    className="w-full max-w-md accent-emerald-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Hướng dẫn tải dưới chân Popup */}
+            <div
+              className={`p-3 text-xs text-center border-t ${
+                isLight
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
+                  : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
+              }`}
+            >
+              {t('mediaPlayerTip') || (
+                <>
+                  💡 Bấm vào biểu tượng <b>3 chấm (⋮)</b> trên thanh phát rồi chọn <b>Download (Tải xuống)</b> để lưu file.
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
