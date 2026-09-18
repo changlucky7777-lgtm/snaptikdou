@@ -288,9 +288,7 @@ export default function App() {
           addHistoryRecord(media, pathData.fullPath, type, 'video');
         }
       } else if (type === 'audio') {
-        const rawAudioUrl = media.audio?.url;
-        const videoUrl = media.video?.hd || media.video?.noWatermark || media.url;
-        const audioUrl = (media.mediaType === 'photos' && rawAudioUrl) ? rawAudioUrl : (videoUrl || rawAudioUrl);
+        const audioUrl = media.audio?.url || (media.mediaType === 'photos' ? media.video?.noWatermark : '');
         if (!audioUrl) {
           throw new Error('Không tìm thấy đường dẫn âm thanh MP3 của bài viết này.');
         }
