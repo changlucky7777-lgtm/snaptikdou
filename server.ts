@@ -1507,27 +1507,21 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   }
 
   // 3. Khởi tạo tham số FFmpeg (tích hợp -ss nếu là request Resume)
-  const ffmpegArgs = [
+  const ffmpegProcess = spawn('ffmpeg', [
     '-reconnect', '1',
+    '-reconnect_at_eof', '1',          // Tự động kết nối lại nếu gặp EOF bất ngờ từ CDN
     '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '10',
+    '-reconnect_delay_max', '15',      // Cho phép thử lại tối đa 15 giây nếu mạng chập chờn
+    '-err_detect', 'ignore_err',       // Bỏ qua các packet âm thanh bị lỗi/hỏng giữa chừng
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
-  ];
-
-  if (seekTimeSeconds > 0) {
-    ffmpegArgs.push('-ss', seekTimeSeconds.toString()); // Tua thẳng tới giây bị đứt kết nối
-  }
-
-  ffmpegArgs.push(
+    ...(seekTimeSeconds > 0 ? ['-ss', seekTimeSeconds.toString()] : []),
     '-i', rawUrl,
     '-vn',
     '-acodec', 'libmp3lame',
     '-b:a', '128k',
     '-f', 'mp3',
     'pipe:1'
-  );
-
-  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+  ]);
 
   ffmpegProcess.stdout.pipe(res);
   ffmpegProcess.stderr.on('data', () => {});
