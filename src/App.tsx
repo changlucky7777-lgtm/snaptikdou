@@ -195,11 +195,8 @@ export default function App() {
     type: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'photo_single',
     photoIndex?: number
   ) => {
-    const session = createDownloadSession();
-    downloadSessionRef.current = session;
     setIsDownloading(true);
     setIsPaused(false);
-    setDownloadProgressText('Đang kết nối...');
     setDirectDownloadInfo(null);
 
     try {
@@ -218,10 +215,6 @@ export default function App() {
         const initialUrl = primaryUrl || fallbackUrl;
         const backupUrls = media.video.backupUrls || [];
 
-        // 1. Kiểm tra kích thước tệp (ngưỡng 70MB)
-        const fileSize = (type === 'video_hd' ? media.video.hdSize : media.video.size) || 0;
-        const isOver70MB = fileSize > 70 * 1024 * 1024;
-
         const downloadParams = new URLSearchParams({
           url: initialUrl,
           fallbackUrl: fallbackUrl || '',
@@ -233,51 +226,22 @@ export default function App() {
         if (backupUrls && backupUrls.length > 0) {
           downloadParams.set('backupUrls', backupUrls.join(','));
         }
+
         const serverDownloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
 
-        // 2. PHÂN LUỒNG TẢI THÔNG MINH CHO FILE LỚN (> 70MB) -> TẢI DIRECT STREAM (0 MB RAM)
-        if (isOver70MB) {
-          setDownloadProgressText('Đang chuyển luồng tải tốc độ cao...');
-          triggerNativeBrowserDownload(serverDownloadUrl, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, type, 'video');
-          setTimeout(() => setDownloadProgressText(''), 2500);
-          return;
-        }
-
-        // 3. VỚI FILE BÌNH THƯỜNG (<= 70MB): GIỮ NGUYÊN LUỒNG BLOB CLIENT (NHANH VÀ CÓ TIẾN TRÌNH)
+        // Chuyển hoàn toàn sang luồng tải trình duyệt (0 MB RAM)
         setDownloadProgressText(t('loadingVideo'));
-        let blob: Blob | null = null;
-        if (initialUrl && !initialUrl.startsWith('/api/')) {
-          try {
-            blob = await streamFetchBlob(initialUrl, (p) => setDownloadProgressText(p), 20000, undefined, session);
-          } catch (cdnErr: any) {
-            if (session.isCancelled || cdnErr?.name === 'AbortError') throw cdnErr;
-          }
-        }
-        if (!blob) {
-          try {
-            blob = await streamFetchBlob(serverDownloadUrl, (p) => setDownloadProgressText(p), 45000, undefined, session);
-          } catch (err: any) {
-            if (session.isCancelled || err?.name === 'AbortError') throw err;
-          }
-        }
+        triggerNativeBrowserDownload(serverDownloadUrl, pathData.filename);
+        addHistoryRecord(media, pathData.fullPath, type, 'video');
 
-        if (session.isCancelled) return;
-        if (blob) {
-          await downloadBlobSafely(blob, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, type, 'video');
+        setTimeout(() => {
           setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 3000);
-        } else {
-          triggerNativeBrowserDownload(serverDownloadUrl, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, type, 'video');
-        }
+          setTimeout(() => setDownloadProgressText(''), 2500);
+        }, 800);
 
       } else if (type === 'audio') {
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
 
-        // NGUỒN ÂM THANH: 
-        // Nếu là Douyin hoặc video TikTok dài > 60s -> Tự động dùng videoUrl làm nguồn tách âm thanh
         const isVideoLong = (media.duration || 0) > 60;
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
@@ -291,79 +255,52 @@ export default function App() {
           throw new Error('Không tìm thấy đường dẫn âm thanh của bài viết này.');
         }
 
-        // KÍCH HOẠT TẢI STREAM MP3 QUA BACKEND ROUTE VỪA TẠO Ở PHẦN 1
         setDownloadProgressText(t('loadingAudio'));
         const audioStreamUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(effectiveMediaSource)}&filename=${encodeURIComponent(pathData.filename)}&duration=${media.duration || 0}`;
 
+        // Chuyển hoàn toàn sang luồng tải trình duyệt (0 MB RAM)
         triggerNativeBrowserDownload(audioStreamUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-        setDownloadProgressText(t('downloadCompleted'));
-        setTimeout(() => setDownloadProgressText(''), 3000);
+
+        setTimeout(() => {
+          setDownloadProgressText(t('downloadCompleted'));
+          setTimeout(() => setDownloadProgressText(''), 2500);
+        }, 800);
+
       } else if (type === 'photos_zip') {
         const items = media.images.map((imgUrl, idx) => {
           const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: idx + 1 });
           return { url: imgUrl, relativePath: pathData.relativePath };
         });
 
+        const zipFilename = `@${media.author.uniqueId}_photo_slides.zip`;
         setDownloadProgressText(t('compressingPhotos'));
-        let zipBlob: Blob | null = null;
 
-        try {
-          const zipItems = items.map((it) => ({
-            nameOrPath: it.relativePath,
-            blobOrUrl: it.url,
-            isBlob: false,
-          }));
-          zipBlob = await createClientZipArchive(
-            zipItems,
-            (percent) => {
-              setDownloadProgressText(`${t('compressingPhotos')} (${percent}%)`);
-            },
-            session
-          );
-        } catch (clientZipErr: any) {
-          if (session.isCancelled || clientZipErr?.name === 'AbortError') throw clientZipErr;
-          try {
-            setDownloadProgressText(t('compressingPhotos'));
-            const zipRes = await fetch('/api/tiktok/bundle-zip', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                items,
-                zipName: `@${media.author.uniqueId}_photo_slides.zip`,
-              }),
-              signal: session.abortController.signal,
-            });
-            if (zipRes.ok) {
-              zipBlob = await zipRes.blob();
-            }
-          } catch (serverErr: any) {
-            if (session.isCancelled || serverErr?.name === 'AbortError') throw serverErr;
-          }
+        // Gọi Backend nén và pipe luồng ZIP trực tiếp xuống trình duyệt
+        const response = await fetch('/api/tiktok/bundle-zip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items,
+            zipName: zipFilename,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Không thể tạo file ZIP cho album ảnh.');
         }
 
-        if (session.isCancelled) return;
+        const zipBlob = await response.blob();
+        await downloadBlobSafely(zipBlob, zipFilename);
 
-        if (zipBlob) {
-          await downloadBlobSafely(zipBlob, `@${media.author.uniqueId}_photo_slides.zip`);
-          addHistoryRecord(media, `@${media.author.uniqueId}/photos/ (${items.length} ảnh)`, 'photos_zip', 'photos');
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 3000);
-        } else {
-          throw new Error('Không thể nén ZIP cho album ảnh.');
-        }
+        addHistoryRecord(media, `@${media.author.uniqueId}/photos/ (${items.length} ảnh)`, 'photos_zip', 'photos');
+        setDownloadProgressText(t('downloadCompleted'));
+        setTimeout(() => setDownloadProgressText(''), 3000);
+
       } else if (type === 'photo_single' && typeof photoIndex === 'number' && media.images?.[photoIndex]) {
         const imgUrl = media.images[photoIndex];
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: photoIndex + 1 });
-        setDownloadProgressText(t('downloadingPhoto'));
 
-        let blob: Blob | null = null;
-        const photoPayload = {
-          url: imgUrl,
-          postUrl: media.url,
-          mediaType: 'photos',
-          filename: pathData.filename,
-        };
         const photoParams = new URLSearchParams({
           url: imgUrl,
           postUrl: media.url,
@@ -372,78 +309,19 @@ export default function App() {
         });
         const photoDownloadUrl = `/api/tiktok/download?${photoParams.toString()}`;
 
-        if (imgUrl && !imgUrl.startsWith('/api/')) {
-          try {
-            blob = await streamFetchBlob(imgUrl, (p) => setDownloadProgressText(p), 20000, undefined, session);
-          } catch (cdnErr: any) {
-            if (session.isCancelled || cdnErr?.name === 'AbortError') throw cdnErr;
-          }
-        }
+        setDownloadProgressText(t('downloadingPhoto'));
+        // Chuyển ảnh đơn lẻ sang luồng tải trình duyệt
+        triggerNativeBrowserDownload(photoDownloadUrl, pathData.filename);
+        addHistoryRecord(media, pathData.fullPath, 'photo_single', 'photos');
 
-        if (!blob) {
-          try {
-            blob = await streamFetchBlob(
-              '/api/tiktok/download',
-              (progressText) => setDownloadProgressText(progressText),
-              30000,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(photoPayload),
-              },
-              session
-            );
-          } catch (err: any) {
-            if (session.isCancelled || err?.name === 'AbortError') throw err;
-            try {
-              blob = await streamFetchBlob(photoDownloadUrl, (p) => setDownloadProgressText(p), 30000, undefined, session);
-            } catch (err2: any) {
-              if (session.isCancelled || err2?.name === 'AbortError') throw err2;
-            }
-          }
-        }
-
-        if (session.isCancelled) return;
-
-        if (blob) {
-          await downloadBlobSafely(blob, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, 'photo_single', 'photos');
+        setTimeout(() => {
           setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 3000);
-        } else {
-          triggerNativeBrowserDownload(photoDownloadUrl, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, 'photo_single', 'photos');
-        }
+          setTimeout(() => setDownloadProgressText(''), 2000);
+        }, 800);
       }
     } catch (err: any) {
-      if (err?.name === 'AbortError' || session.isCancelled) {
-        setDownloadProgressText('Đã hủy');
-        setTimeout(() => setDownloadProgressText(''), 2000);
-        return;
-      }
-
-      console.error('Download single error:', err);
-      const fallbackUrl =
-        type === 'video_hd'
-          ? media.video.hd || media.video.noWatermark
-          : type === 'video_sd'
-          ? media.video.noWatermark || media.video.hd
-          : type === 'audio'
-          ? media.audio?.url
-          : undefined;
-
-      const directUrl = fallbackUrl || media.video.hd || media.video.noWatermark || media.url;
-      const cleanTitle =
-        (media.title || 'video')
-          .replace(/[^\w\s\u4e00-\u9fa5\u00C0-\u1EF9_-]/gi, '')
-          .trim()
-          .slice(0, 40) || media.id || 'download';
-      const ext = type === 'audio' ? 'mp3' : 'mp4';
-
-      setDirectDownloadInfo({
-        url: directUrl,
-        filename: `${cleanTitle}.${ext}`,
-      });
+      console.error('Download error:', err);
+      window.alert(err?.message || 'Có lỗi xảy ra khi tải tệp.');
     } finally {
       setIsDownloading(false);
       setIsPaused(false);
