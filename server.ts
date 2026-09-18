@@ -1439,31 +1439,21 @@ async function fetchMediaWithRetry(
 app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
   const requestedFilename = String(req.query.filename || 'audio.mp3').trim();
-  const duration = Number(req.query.duration || 0); // Thời lượng tính bằng giây
+  const duration = Number(req.query.duration || 0);
 
   if (!rawUrl) {
     res.status(400).send('Thiếu tham số URL âm thanh');
     return;
   }
 
+  // Tắt giới hạn timeout của socket để tải file hàng GB không bị ngắt kết nối
+  req.socket.setTimeout(0);
+  res.setTimeout(0);
+
   const safeFilename =
     requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() ||
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
-
-  res.setHeader('Content-Type', 'audio/mpeg');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
-  );
-  res.setHeader('Accept-Ranges', 'bytes');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-
-  // Ước tính kích thước MP3 ở bitrate 128kbps (16.000 bytes/giây) + 128KB header ID3
-  if (duration > 0) {
-    const estimatedBytes = Math.round(duration * 16000 + 131072);
-    res.setHeader('Content-Length', estimatedBytes.toString());
-  }
 
   const isDouyin =
     rawUrl.includes('douyin.com') ||
@@ -1475,18 +1465,69 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  const ffmpegProcess = spawn('ffmpeg', [
+  // 1. Tính toán ước lượng dung lượng và vị trí Range
+  const estimatedTotalBytes = duration > 0 ? Math.round(duration * 16000 + 131072) : 0;
+  const rangeHeader = req.headers.range;
+
+  let startByte = 0;
+  let seekTimeSeconds = 0;
+
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d+)-/);
+    if (match) {
+      startByte = Number(match[1]);
+      // Tính tương đối thời gian giây cần tua tới để tiếp tục nén:
+      // (startByte - headerID3) / 16000 byte mỗi giây
+      seekTimeSeconds = Math.max(0, Math.floor((startByte - 131072) / 16000));
+    }
+  }
+
+  // 2. Thiết lập Header phản hồi
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
+  );
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Connection', 'keep-alive');
+
+  if (rangeHeader && estimatedTotalBytes > 0 && startByte < estimatedTotalBytes) {
+    res.status(206);
+    res.setHeader(
+      'Content-Range',
+      `bytes ${startByte}-${estimatedTotalBytes - 1}/${estimatedTotalBytes}`
+    );
+    res.setHeader('Content-Length', (estimatedTotalBytes - startByte).toString());
+  } else {
+    res.status(200);
+    if (estimatedTotalBytes > 0) {
+      res.setHeader('Content-Length', estimatedTotalBytes.toString());
+    }
+  }
+
+  // 3. Khởi tạo tham số FFmpeg (tích hợp -ss nếu là request Resume)
+  const ffmpegArgs = [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '5',
+    '-reconnect_delay_max', '10',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
+  ];
+
+  if (seekTimeSeconds > 0) {
+    ffmpegArgs.push('-ss', seekTimeSeconds.toString()); // Tua thẳng tới giây bị đứt kết nối
+  }
+
+  ffmpegArgs.push(
     '-i', rawUrl,
     '-vn',
     '-acodec', 'libmp3lame',
     '-b:a', '128k',
     '-f', 'mp3',
     'pipe:1'
-  ]);
+  );
+
+  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
 
   ffmpegProcess.stdout.pipe(res);
   ffmpegProcess.stderr.on('data', () => {});
@@ -1508,6 +1549,10 @@ app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
 });
 
 app.all('/api/tiktok/download', async (req: Request, res: Response) => {
+  // Thêm thiết lập timeout ngay đầu route /api/tiktok/download
+  req.socket.setTimeout(0);
+  res.setTimeout(0);
+
   try {
     const rawUrl = ((req.query.url || req.body?.url) as string) || '';
     const fallbackUrl = ((req.query.fallbackUrl || req.body?.fallbackUrl) as string) || '';
@@ -1640,6 +1685,7 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
 
         const isRangeRequest = Boolean(req.headers.range);
         res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Connection', 'keep-alive');
         if (isRangeRequest && mediaResponse.status === 206) {
           res.status(206);
           const cr = mediaResponse.headers.get('content-range');
