@@ -6,6 +6,7 @@ import {
   Loader2,
   Sparkles,
 } from 'lucide-react';
+import { triggerHapticFeedback } from '../utils/fileSystem';
 
 interface UrlInputBarProps {
   url: string;
@@ -205,13 +206,17 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
       <button
         id="btn-extract-tiktok"
         type="button"
-        onClick={() => onExtract()}
+        onTouchStart={() => triggerHapticFeedback(15)}
+        onClick={() => {
+          triggerHapticFeedback(15);
+          onExtract();
+        }}
         disabled={isLoading}
         style={{ borderRadius: '21px' }}
-        className={`px-6 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all duration-200 whitespace-nowrap shadow-md touch-manipulation min-h-[40px] mx-auto cursor-pointer ${
+        className={`px-6 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all duration-100 whitespace-nowrap shadow-md touch-manipulation select-none active:scale-95 active:brightness-90 min-h-[40px] mx-auto cursor-pointer ${
           isLoading
             ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-            : 'bg-gradient-to-r from-pink-600 via-rose-600 to-pink-500 text-white hover:from-pink-500 hover:to-rose-500 shadow-pink-600/30 hover:scale-[1.02] active:scale-[0.98]'
+            : 'bg-gradient-to-r from-pink-600 via-rose-600 to-pink-500 text-white shadow-pink-600/30'
         }`}
       >
         {isLoading ? (

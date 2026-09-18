@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { TikTokMediaItem } from '../types';
+import { triggerHapticFeedback } from '../utils/fileSystem';
 
 interface MediaResultCardProps {
   media: TikTokMediaItem;
@@ -610,13 +611,17 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 <button
                   id="btn-download-video-hd"
                   type="button"
-                  onClick={() => onDownloadSingle(media, 'video_hd')}
+                  onTouchStart={() => triggerHapticFeedback(20)}
+                  onClick={() => {
+                    triggerHapticFeedback(20);
+                    onDownloadSingle(media, 'video_hd');
+                  }}
                   disabled={isDownloading}
                   title={t('downloadVideoHd')}
-                  className={`group relative flex items-center justify-between p-4 rounded-2xl border text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer ${
+                  className={`group relative flex items-center justify-between p-4 rounded-2xl border text-left transition-all duration-100 touch-manipulation select-none active:scale-95 active:brightness-90 cursor-pointer ${
                     isLight
-                      ? 'bg-white hover:bg-pink-50/40 border-pink-200 hover:border-pink-400 shadow-sm hover:shadow-md'
-                      : 'border-pink-500/40 bg-gradient-to-br from-slate-850 to-slate-900 hover:from-slate-800 hover:to-slate-850 hover:border-pink-500/70 shadow-lg shadow-pink-950/20'
+                      ? 'bg-white hover:bg-pink-50/40 border-pink-200 hover:border-pink-400 shadow-sm'
+                      : 'border-pink-500/40 bg-gradient-to-br from-slate-850 to-slate-900 hover:border-pink-500/70 shadow-lg shadow-pink-950/20'
                   }`}
                 >
                   <div className="flex items-center gap-3.5">
@@ -659,17 +664,21 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               <button
                 id="btn-download-audio"
                 type="button"
-                onClick={() => onDownloadSingle(media, 'audio')}
+                onTouchStart={() => triggerHapticFeedback(20)}
+                onClick={() => {
+                  triggerHapticFeedback(20);
+                  onDownloadSingle(media, 'audio');
+                }}
                 disabled={isDownloading || (!media.audio?.url && !media.video?.noWatermark)}
                 title={t('downloadAudio')}
-                className={`group relative flex items-center justify-between p-4 rounded-2xl border text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 ${
+                className={`group relative flex items-center justify-between p-4 rounded-2xl border text-left transition-all duration-100 touch-manipulation select-none active:scale-95 active:brightness-90 ${
                   !media.audio?.url && !media.video?.noWatermark
                     ? isLight
                       ? 'bg-slate-100 border-slate-200 opacity-40 cursor-not-allowed'
                       : 'bg-slate-900/40 border-slate-800 opacity-40 cursor-not-allowed'
                     : isLight
-                    ? 'bg-white hover:bg-indigo-50/40 border-slate-200 hover:border-indigo-300 shadow-sm hover:shadow-md cursor-pointer'
-                    : 'border-slate-700/80 bg-slate-850/90 hover:bg-slate-800 hover:border-indigo-500/60 shadow-md cursor-pointer'
+                    ? 'bg-white hover:bg-indigo-50/40 border-slate-200 hover:border-indigo-300 shadow-sm cursor-pointer'
+                    : 'border-slate-700/80 bg-slate-850/90 hover:border-indigo-500/60 shadow-md cursor-pointer'
                 }`}
               >
                 <div className="flex items-center gap-3.5">
