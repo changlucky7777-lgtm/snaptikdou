@@ -1439,14 +1439,12 @@ async function fetchMediaWithRetry(
 app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
   const requestedFilename = String(req.query.filename || 'audio.mp3').trim();
-  const duration = Number(req.query.duration || 0);
 
   if (!rawUrl) {
-    res.status(400).send('Thiếu tham số URL âm thanh');
+    res.status(400).send('Thiếu URL');
     return;
   }
 
-  // Tắt giới hạn timeout của socket để tải file hàng GB không bị ngắt kết nối
   req.socket.setTimeout(0);
   res.setTimeout(0);
 
@@ -1454,6 +1452,15 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() ||
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
+
+  // KHÔNG set Content-Length ước tính (để trình duyệt dùng Chunked Transfer Encoding không bị ngắt)
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
+  );
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
   const isDouyin =
     rawUrl.includes('douyin.com') ||
@@ -1465,60 +1472,17 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // 1. Tính toán ước lượng dung lượng và vị trí Range
-  const estimatedTotalBytes = duration > 0 ? Math.round(duration * 16000 + 131072) : 0;
-  const rangeHeader = req.headers.range;
-
-  let startByte = 0;
-  let seekTimeSeconds = 0;
-
-  if (rangeHeader) {
-    const match = rangeHeader.match(/bytes=(\d+)-/);
-    if (match) {
-      startByte = Number(match[1]);
-      // Tính tương đối thời gian giây cần tua tới để tiếp tục nén:
-      // (startByte - headerID3) / 16000 byte mỗi giây
-      seekTimeSeconds = Math.max(0, Math.floor((startByte - 131072) / 16000));
-    }
-  }
-
-  // 2. Thiết lập Header phản hồi
-  res.setHeader('Content-Type', 'audio/mpeg');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
-  );
-  res.setHeader('Accept-Ranges', 'bytes');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Connection', 'keep-alive');
-
-  if (rangeHeader && estimatedTotalBytes > 0 && startByte < estimatedTotalBytes) {
-    res.status(206);
-    res.setHeader(
-      'Content-Range',
-      `bytes ${startByte}-${estimatedTotalBytes - 1}/${estimatedTotalBytes}`
-    );
-    res.setHeader('Content-Length', (estimatedTotalBytes - startByte).toString());
-  } else {
-    res.status(200);
-    if (estimatedTotalBytes > 0) {
-      res.setHeader('Content-Length', estimatedTotalBytes.toString());
-    }
-  }
-
-  // 3. Khởi tạo tham số FFmpeg (tích hợp -ss nếu là request Resume)
+  // Dùng preset ultrafast và pipe trực tiếp không gánh nặng CPU
   const ffmpegProcess = spawn('ffmpeg', [
     '-reconnect', '1',
-    '-reconnect_at_eof', '1',          // Tự động kết nối lại nếu gặp EOF bất ngờ từ CDN
     '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '15',      // Cho phép thử lại tối đa 15 giây nếu mạng chập chờn
-    '-err_detect', 'ignore_err',       // Bỏ qua các packet âm thanh bị lỗi/hỏng giữa chừng
+    '-reconnect_delay_max', '10',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
-    ...(seekTimeSeconds > 0 ? ['-ss', seekTimeSeconds.toString()] : []),
     '-i', rawUrl,
-    '-vn',
-    '-acodec', 'libmp3lame',
-    '-b:a', '128k',
+    '-vn',                     // Bỏ video
+    '-c:a', 'libmp3lame',      // Chuẩn hóa MP3
+    '-q:a', '2',               // Tốc độ nén biến thiên cực nhanh
+    '-preset', 'ultrafast',    // Tối ưu tốc độ tối đa cho CPU
     '-f', 'mp3',
     'pipe:1'
   ]);

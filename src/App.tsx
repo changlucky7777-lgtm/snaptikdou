@@ -242,24 +242,25 @@ export default function App() {
       } else if (type === 'audio') {
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
 
-        const isVideoLong = (media.duration || 0) > 60;
+        // Nếu TikTok có sẵn link audio thì tải trực tiếp qua download proxy cực nhanh
+        // Chỉ dùng ffmpeg stream-audio khi là Douyin hoặc video không có track audio riêng
+        const isDouyin = media.platform === 'douyin';
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
 
-        const effectiveMediaSource =
-          (isVideoLong || !rawAudioUrl || media.platform === 'douyin') && videoUrl
-            ? videoUrl
-            : (rawAudioUrl || videoUrl);
+        setDownloadProgressText(t('loadingAudio'));
 
-        if (!effectiveMediaSource) {
-          throw new Error('Không tìm thấy đường dẫn âm thanh của bài viết này.');
+        let downloadUrl = '';
+        if (!isDouyin && rawAudioUrl && rawAudioUrl.startsWith('http')) {
+          // Luồng siêu tốc cho TikTok thông thường
+          downloadUrl = `/api/tiktok/download?url=${encodeURIComponent(rawAudioUrl)}&filename=${encodeURIComponent(pathData.filename)}`;
+        } else {
+          // Luồng bóc tách FFmpeg tốc độ cao cho Douyin / Video dài
+          const source = videoUrl || rawAudioUrl;
+          downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}`;
         }
 
-        setDownloadProgressText(t('loadingAudio'));
-        const audioStreamUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(effectiveMediaSource)}&filename=${encodeURIComponent(pathData.filename)}&duration=${media.duration || 0}`;
-
-        // Chuyển hoàn toàn sang luồng tải trình duyệt (0 MB RAM)
-        triggerNativeBrowserDownload(audioStreamUrl, pathData.filename);
+        triggerNativeBrowserDownload(downloadUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
 
         setTimeout(() => {
