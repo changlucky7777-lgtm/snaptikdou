@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
+import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import zlib from 'zlib';
 import { Readable } from 'stream';
 import { spawn } from 'child_process';
@@ -1453,16 +1455,6 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
 
-  // 1. HEADER CHUẨN ĐỂ KHÔNG BỊ KIỂM TRA LỆCH BYTE
-  res.setHeader('Content-Type', 'audio/mpeg');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
-  );
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  // TUYỆT ĐỐI KHÔNG SET Content-Length VÀ Accept-Ranges Ở ĐÂY
-
   const isDouyin =
     rawUrl.includes('douyin.com') ||
     rawUrl.includes('iesdouyin.com') ||
@@ -1473,8 +1465,10 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // 2. FFMPEG NÉN TỐC ĐỘ CAO VỚI LAME CHUẨN
-  const ffmpegProcess = spawn('ffmpeg', [
+  // Tạo đường dẫn file tạm duy nhất trong /tmp
+  const tempFilePath = path.join(os.tmpdir(), `audio_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.mp3`);
+
+  const ffmpegArgs = [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '10',
@@ -1484,26 +1478,67 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     '-c:a', 'libmp3lame',
     '-b:a', '128k',
     '-preset', 'ultrafast',
-    '-f', 'mp3',
-    'pipe:1'
-  ]);
+    '-y',
+    tempFilePath
+  ];
 
-  ffmpegProcess.stdout.pipe(res);
+  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
 
-  ffmpegProcess.stderr.on('data', () => {});
+  // Xử lý dọn dẹp an toàn file tạm
+  const cleanupTempFile = () => {
+    try {
+      if (fs.existsSync(tempFilePath)) {
+        fs.unlinkSync(tempFilePath);
+      }
+    } catch (_) {}
+  };
+
+  ffmpegProcess.on('close', (code) => {
+    if (code !== 0 || !fs.existsSync(tempFilePath)) {
+      cleanupTempFile();
+      if (!res.headersSent) res.status(500).send('Trích xuất âm thanh thất bại');
+      return;
+    }
+
+    try {
+      const stats = fs.statSync(tempFilePath);
+      const totalBytes = stats.size;
+
+      // Gửi chính xác Content-Length để iOS và Desktop hiển thị số MB thực tế
+      res.writeHead(200, {
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': totalBytes,
+        'Content-Disposition': `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`,
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache, no-transform'
+      });
+
+      const readStream = fs.createReadStream(tempFilePath);
+      readStream.pipe(res);
+
+      readStream.on('end', () => {
+        cleanupTempFile();
+      });
+
+      readStream.on('error', () => {
+        cleanupTempFile();
+      });
+    } catch (err) {
+      cleanupTempFile();
+      if (!res.headersSent) res.status(500).send('Lỗi đọc dữ liệu tệp');
+    }
+  });
 
   ffmpegProcess.on('error', (err) => {
     console.error('FFmpeg process error:', err);
-    if (!res.headersSent) res.status(500).end();
-  });
-
-  // Đảm bảo đóng kết nối êm xuôi khi FFmpeg xử lý xong toàn bộ luồng
-  ffmpegProcess.stdout.on('end', () => {
-    res.end();
+    cleanupTempFile();
+    if (!res.headersSent) res.status(500).send('Lỗi xử lý FFmpeg');
   });
 
   req.on('close', () => {
     ffmpegProcess.kill('SIGKILL');
+    cleanupTempFile();
   });
 });
 
