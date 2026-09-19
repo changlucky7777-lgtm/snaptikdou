@@ -20,7 +20,7 @@ import {
   Pause,
   X,
 } from 'lucide-react';
-import { TikTokMediaItem } from '../types';
+import { TikTokMediaItem, AudioProgressState } from '../types';
 
 interface MediaResultCardProps {
   media: TikTokMediaItem;
@@ -37,6 +37,9 @@ interface MediaResultCardProps {
   downloadProgressText?: string;
   directDownloadInfo?: { url: string; filename: string } | null;
   onDirectDownload?: () => void;
+  audioProgress?: AudioProgressState | null;
+  onTogglePauseAudio?: () => void;
+  onCancelAudioDownload?: () => void;
   theme?: 'dark' | 'light';
 }
 
@@ -51,6 +54,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   downloadProgressText,
   directDownloadInfo,
   onDirectDownload,
+  audioProgress,
+  onTogglePauseAudio,
+  onCancelAudioDownload,
   theme = 'dark',
 }) => {
   const { t } = useTranslation();
@@ -455,80 +461,65 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
 
           {/* Download Options List / Cards */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h3
-                  className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${
-                    isLight ? 'text-slate-900' : 'text-white'
-                  }`}
-                >
-                  <Download className={`w-3.5 h-3.5 ${isLight ? 'text-emerald-600' : 'text-[#84eba0]'}`} />
-                  <span>{t('downloadOptions')}</span>
-                </h3>
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              {/* Tiêu đề bên trái */}
+              <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-semibold text-base">
+                <Download className="w-5 h-5 text-emerald-500" />
+                <span>{t('downloadOptions') || 'Tùy chọn tải về'}</span>
               </div>
 
-              <div className="flex items-center gap-2.5 flex-wrap">
-                {isDownloading && (
-                  <div
-                    className={`flex items-center gap-2 px-2.5 py-1 rounded-xl border transition-all ${
-                      isLight
-                        ? 'bg-pink-50/90 border-pink-200 text-pink-700 shadow-xs'
-                        : 'bg-pink-500/10 border-pink-500/20 text-pink-400'
-                    }`}
-                  >
-                    <span className="text-xs font-semibold flex items-center gap-1.5">
-                      {isPaused ? (
-                        <Pause className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
-                      ) : (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-500 shrink-0" />
-                      )}
-                      <span className="truncate max-w-[190px] sm:max-w-none">
-                        {downloadProgressText || t('processingDownload')}
-                      </span>
-                    </span>
-
-                    {/* Hai nút Tạm dừng / Tiếp tục và Hủy tải về CHỈ XUẤT HIỆN khi quá trình tải về thực sự bắt đầu và hiện thông số (ví dụ: 0/100MB (0%)) */}
-                    {hasTransferStarted && (
-                      <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in zoom-in-95 duration-200">
-                        {/* Nút Tạm dừng / Tiếp tục tải về (CHỈ HIỆN ICON, KHÔNG HIỆN CHỮ) */}
-                        <button
-                          id="btn-pause-resume-download"
-                          type="button"
-                          onClick={isPaused ? onResumeDownload : onPauseDownload}
-                          className={`p-1 rounded-lg transition-all active:scale-90 cursor-pointer flex items-center justify-center shrink-0 ${
-                            isLight
-                              ? 'bg-white hover:bg-slate-100 text-slate-700 hover:text-pink-600 border border-slate-200 shadow-xs'
-                              : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700'
+              {/* KHU VỰC BÊN PHẢI: Nếu đang tải MP3 thì hiện THANH TIẾN TRÌNH (kèm Tạm dừng + Hủy). 
+                  Nếu tải loại khác thì hiện chữ xoay vòng thông thường */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {audioProgress ? (
+                  /* THAY THẾ VỊ TRÍ SỐ 2 BẰNG THANH TIẾN TRÌNH MP3 ĐẦY ĐỦ TIỆN ÍCH */
+                  <div className="flex items-center gap-3 bg-sky-50/90 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-xs animate-in fade-in duration-150">
+                    {/* Thanh bar thu nhỏ và chỉ số % */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 sm:w-28 h-2 bg-sky-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-150 rounded-full ${
+                            audioProgress.isPaused ? 'bg-amber-500' : 'bg-sky-500'
                           }`}
-                          title={isPaused ? 'Tiếp tục tải về' : 'Tạm dừng'}
-                          aria-label={isPaused ? 'Tiếp tục tải về' : 'Tạm dừng'}
-                        >
-                          {isPaused ? (
-                            <Play className="w-3.5 h-3.5 fill-current text-emerald-500" />
-                          ) : (
-                            <Pause className="w-3.5 h-3.5 fill-current text-amber-400" />
-                          )}
-                        </button>
-
-                        {/* Nút Hủy tải về (CHỈ HIỆN ICON, KHÔNG HIỆN CHỮ) */}
-                        <button
-                          id="btn-cancel-download"
-                          type="button"
-                          onClick={onCancelDownload}
-                          className={`p-1 rounded-lg transition-all active:scale-90 cursor-pointer flex items-center justify-center shrink-0 ${
-                            isLight
-                              ? 'bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 shadow-xs'
-                              : 'bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-700'
-                          }`}
-                          title="Hủy tải về"
-                          aria-label="Hủy tải về"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                          style={{ width: `${Math.max(4, audioProgress.percent)}%` }}
+                        />
                       </div>
-                    )}
+                      <span className="text-xs font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                        {audioProgress.isPaused ? 'Tạm dừng' : `${audioProgress.currentMB}/${audioProgress.totalMB} MB`} ({audioProgress.percent}%)
+                      </span>
+                    </div>
+
+                    {/* Nút Tạm dừng / Tiếp tục */}
+                    <button
+                      type="button"
+                      onClick={onTogglePauseAudio}
+                      className="p-1 rounded-full hover:bg-sky-200/60 dark:hover:bg-slate-700 text-sky-600 dark:text-sky-400 active:scale-90 transition-transform cursor-pointer"
+                      title={audioProgress.isPaused ? 'Tiếp tục tải' : 'Tạm dừng'}
+                    >
+                      {audioProgress.isPaused ? (
+                        <Play className="w-3.5 h-3.5 fill-current text-emerald-600" />
+                      ) : (
+                        <Pause className="w-3.5 h-3.5 fill-current text-sky-600" />
+                      )}
+                    </button>
+
+                    {/* Nút HỦY tải xuống */}
+                    <button
+                      type="button"
+                      onClick={onCancelAudioDownload}
+                      className="p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/40 text-slate-400 hover:text-red-500 active:scale-90 transition-transform cursor-pointer"
+                      title="Hủy tải xuống"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                )}
+                ) : downloadProgressText ? (
+                  /* Trạng thái loading thông thường khi tải MP4 hoặc ZIP (Mục số 2 cũ) */
+                  <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-500" />
+                    <span>{downloadProgressText}</span>
+                  </div>
+                ) : null}
 
                 {/* Vị trí số 4: Nút Tải xuống tốc độ cao (chỉ xuất hiện sau khi quá trình tải thông thường không tải được) */}
                 {directDownloadInfo && !isDownloading && (

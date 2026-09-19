@@ -6,7 +6,7 @@ import { UrlInputBar } from './components/UrlInputBar';
 import { MediaResultCard, MediaResultCardSkeleton } from './components/MediaResultCard';
 import { HistorySection } from './components/HistorySection';
 import { DownloadConfirmModal } from './components/DownloadConfirmModal';
-import { TikTokMediaItem, PathConfig, HistoryRecord } from './types';
+import { TikTokMediaItem, PathConfig, HistoryRecord, AudioProgressState } from './types';
 import { DEFAULT_PATH_CONFIG, buildFilePath } from './utils/pathBuilder';
 import { getInitialLanguage, saveLanguage, SupportedLang } from './i18n';
 import {
@@ -24,14 +24,6 @@ const STORAGE_KEY_HISTORY = 'snaptikdou_history';
 interface DirectDownloadInfo {
   url: string;
   filename: string;
-}
-
-// Cấu trúc trạng thái thanh tiến trình riêng cho MP3
-interface AudioProgressState {
-  currentMB: string;
-  totalMB: string;
-  percent: number;
-  isPaused: boolean;
 }
 
 const streamFetchBlob = async (
@@ -243,6 +235,17 @@ export default function App() {
     }
   };
 
+  // Hàm hủy phiên tải MP3 hoàn toàn
+  const handleCancelAudioDownload = () => {
+    if (audioSessionRef.current?.abortController) {
+      audioSessionRef.current.abortController.abort();
+    }
+    audioSessionRef.current = null;
+    setAudioProgress(null);
+    setIsDownloading(false);
+    setDownloadProgressText('');
+  };
+
   const handlePauseDownload = () => {
     if (downloadSessionRef.current) {
       downloadSessionRef.current.pause();
@@ -300,6 +303,11 @@ export default function App() {
   }, [history]);
 
   const handleExtract = async (targetUrl?: string) => {
+    // Nếu đang có tiến trình tải MP3 từ link trước đó -> Hủy ngay lập tức
+    if (audioSessionRef.current || audioProgress) {
+      handleCancelAudioDownload();
+    }
+
     const queryUrl = targetUrl || url;
     const trimmedUrl = (queryUrl || '').trim();
 
@@ -728,47 +736,12 @@ export default function App() {
                 downloadProgressText={downloadProgressText}
                 directDownloadInfo={directDownloadInfo}
                 onDirectDownload={handleDirectDownload}
+                audioProgress={audioProgress}
+                onTogglePauseAudio={handleTogglePauseAudio}
+                onCancelAudioDownload={handleCancelAudioDownload}
                 theme={theme}
               />
             ) : null}
-
-            {/* THANH TIẾN TRÌNH: CHỈ XUẤT HIỆN KHI TẢI FILE MP3 */}
-            {audioProgress && (
-              <div className="mt-4 p-3.5 bg-sky-50 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl flex items-center justify-between gap-4 shadow-sm animate-in fade-in duration-200">
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between text-xs font-semibold text-sky-800 dark:text-sky-300 mb-1.5">
-                    <span>
-                      {audioProgress.isPaused ? 'Đã tạm dừng' : 'Đang tải MP3...'}
-                    </span>
-                    <span>
-                      {audioProgress.currentMB} MB / {audioProgress.totalMB} MB ({audioProgress.percent}%)
-                    </span>
-                  </div>
-                  <div className="w-full h-2 bg-sky-200/60 dark:bg-slate-700 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-150 rounded-full ${
-                        audioProgress.isPaused ? 'bg-amber-500' : 'bg-sky-500'
-                      }`}
-                      style={{ width: `${Math.max(3, audioProgress.percent)}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* NÚT TẠM DỪNG / TIẾP TỤC */}
-                <button
-                  type="button"
-                  onClick={handleTogglePauseAudio}
-                  className="p-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 active:scale-90 transition-transform cursor-pointer flex items-center justify-center shrink-0"
-                  title={audioProgress.isPaused ? 'Tiếp tục tải' : 'Tạm dừng'}
-                >
-                  {audioProgress.isPaused ? (
-                    <Play className="w-4 h-4 text-emerald-600 dark:text-emerald-400 fill-emerald-600 dark:fill-emerald-400" />
-                  ) : (
-                    <Pause className="w-4 h-4 text-sky-600 dark:text-sky-400 fill-sky-600 dark:fill-sky-400" />
-                  )}
-                </button>
-              </div>
-            )}
           </div>
         )}
 

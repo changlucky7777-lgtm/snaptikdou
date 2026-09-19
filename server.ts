@@ -1476,19 +1476,19 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
 
+  // Giới hạn số luồng (threads) để không vắt kiệt 100% CPU của VPS
   const ffmpegArgs = [
+    '-threads', '2',              // Tối đa 2 threads, tránh CPU rú hết công suất
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '10',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
   ];
 
-  // Nếu có Range bắt đầu từ byte X (tải nối tiếp), tính thời gian để FFmpeg nhảy tới đúng vị trí
   if (rangeHeader) {
     const parts = rangeHeader.replace(/bytes=/, '').split('-');
     const startByte = parseInt(parts[0], 10) || 0;
     if (startByte > 0) {
-      // 128kbps = 16,000 bytes/s -> thời gian bắt đầu nhảy tới
       const startSec = (startByte / 16000).toFixed(2);
       ffmpegArgs.push('-ss', startSec);
       res.status(206);
@@ -1505,6 +1505,7 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     '-c:a', 'libmp3lame',
     '-b:a', '128k',
     '-preset', 'ultrafast',
+    '-threads', '2',
     '-f', 'mp3',
     'pipe:1'
   );
