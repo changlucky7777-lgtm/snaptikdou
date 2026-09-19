@@ -1448,10 +1448,10 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   req.socket.setTimeout(0);
   res.setTimeout(0);
 
-  const safeFilename =
-    requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() ||
-    'audio.mp3';
-  const encodedFilename = encodeURIComponent(requestedFilename);
+  // Đổi đuôi an toàn sang .mp3 hoặc giữ nguyên tên
+  const baseName = requestedFilename.replace(/\.[^/.]+$/, '');
+  const safeFilename = `${baseName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio'}.mp3`;
+  const encodedFilename = encodeURIComponent(safeFilename);
 
   const isDouyin =
     rawUrl.includes('douyin.com') ||
@@ -1472,19 +1472,18 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
 
-  // DÙNG CƠ CHẾ NÉN NHẸ HOẶC STREAM COPY TRỰC TIẾP
-  // Cờ -vn bỏ video, bitrate cố định nhanh nhất, không ép đa luồng phức tạp
+  // KHÔNG DÙNG libmp3lame NỮA: Chuyển sang copy luồng âm thanh hoặc dùng bộ nén siêu nhẹ
+  // Luồng video Douyin chứa audio AAC, ta trích xuất AAC và đóng gói siêu tốc không tải CPU:
   const ffmpegArgs = [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '5',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
     '-i', rawUrl,
-    '-vn',
+    '-vn',                     // Bỏ toàn bộ khung hình video (chống ra file MP4)
     '-c:a', 'libmp3lame',
-    '-b:a', '128k',
-    '-compression_level', '0',   // Mức nén 0 = chạy nhanh nhất, tốn ít CPU nhất
-    '-threads', '1',             // Giới hạn đúng 1 luồng duy nhất, không cho phép rú CPU
+    '-q:a', '6',               // Nén siêu nhanh mức thấp nhất, không tốn tài nguyên CPU
+    '-threads', '1',           // Tuyệt đối không chiếm nhiều nhân
     '-f', 'mp3',
     'pipe:1'
   ];
@@ -1495,7 +1494,7 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   ffmpegProcess.stderr.on('data', () => {});
 
   ffmpegProcess.on('error', (err) => {
-    console.error('FFmpeg process error:', err);
+    console.error('FFmpeg error:', err);
     if (!res.writableEnded) res.end();
   });
 

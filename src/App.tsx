@@ -429,31 +429,38 @@ export default function App() {
       } else if (type === 'audio') {
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
 
-        // Lấy link audio gốc (nếu có) hoặc fallback về link video
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
-        const targetUrl = (rawAudioUrl && rawAudioUrl.startsWith('http')) ? rawAudioUrl : videoUrl;
 
-        if (!targetUrl) {
-          throw new Error('Không tìm thấy link âm thanh hợp lệ.');
+        let downloadUrl = '';
+
+        // Kiểm tra xem link audio có phải là link nhạc độc lập (không trùng link video)
+        const hasValidAudioStream = rawAudioUrl && 
+                                    rawAudioUrl.startsWith('http') && 
+                                    rawAudioUrl !== videoUrl &&
+                                    !rawAudioUrl.includes('.mp4');
+
+        if (hasValidAudioStream) {
+          // LUỒNG SIÊU ÊM 0% CPU: Link nhạc CDN độc lập từ Douyin/TikTok
+          const downloadParams = new URLSearchParams({
+            url: rawAudioUrl,
+            filename: pathData.filename,
+            mediaType: 'audio'
+          });
+          downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
+        } else {
+          // LUỒNG BÓC TÁCH ÂM THANH: Video không có link nhạc riêng -> Bóc âm thanh ra khỏi MP4
+          const source = videoUrl || rawAudioUrl;
+          downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}`;
         }
 
-        // DÙNG LẠI ROUTE DOWNLOAD PROXY THUẦN TÚY (DÃY KÝ TỰ MÃ HÓA, 0% CPU)
-        const downloadParams = new URLSearchParams({
-          url: targetUrl,
-          filename: pathData.filename,
-          mediaType: 'audio'
-        });
-        const downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
-
-        // Thiết lập phiên tải nối tiếp / fetch
         audioSessionRef.current = {
           url: downloadUrl,
           filename: pathData.filename,
           media,
           pathData,
           receivedBytes: 0,
-          totalBytes: 0, // Sẽ tự động lấy Content-Length thực tế từ header của CDN
+          totalBytes: 0,
           chunks: [],
           abortController: null,
         };
