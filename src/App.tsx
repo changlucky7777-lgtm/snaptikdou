@@ -4,6 +4,7 @@ import { LanguageSelector } from './components/LanguageSelector';
 import { UrlInputBar } from './components/UrlInputBar';
 import { MediaResultCard, MediaResultCardSkeleton } from './components/MediaResultCard';
 import { HistorySection } from './components/HistorySection';
+import { DownloadConfirmModal } from './components/DownloadConfirmModal';
 import { TikTokMediaItem, PathConfig, HistoryRecord } from './types';
 import { DEFAULT_PATH_CONFIG, buildFilePath } from './utils/pathBuilder';
 import { getInitialLanguage, saveLanguage, SupportedLang } from './i18n';
@@ -49,6 +50,21 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const [directDownloadInfo, setDirectDownloadInfo] = useState<DirectDownloadInfo | null>(null);
+
+  // Nhận diện thiết bị di động (Android hoặc iOS)
+  const isMobileDevice = () => {
+    if (typeof window === 'undefined') return false;
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || window.innerWidth < 768;
+  };
+
+  // State lưu thông tin tệp đang chờ xác nhận
+  const [pendingDownload, setPendingDownload] = useState<{
+    media: TikTokMediaItem;
+    type: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'photo_single';
+    photoIndex?: number;
+    filename: string;
+    previewUrl?: string;
+  } | null>(null);
 
   const [pathConfig, setPathConfig] = useState<PathConfig>(() => {
     if (typeof window !== 'undefined') {
@@ -190,7 +206,7 @@ export default function App() {
     setHistory((prev) => [newRecord, ...prev]);
   };
 
-  const handleDownloadSingle = async (
+  const executeDownloadDirect = async (
     media: TikTokMediaItem,
     type: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'photo_single',
     photoIndex?: number
@@ -229,7 +245,6 @@ export default function App() {
 
         const serverDownloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
 
-        // Chuyển hoàn toàn sang luồng tải trình duyệt (0 MB RAM)
         setDownloadProgressText(t('loadingVideo'));
         triggerNativeBrowserDownload(serverDownloadUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, type, 'video');
@@ -242,8 +257,6 @@ export default function App() {
       } else if (type === 'audio') {
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
 
-        // Nếu TikTok có sẵn link audio thì tải trực tiếp qua download proxy cực nhanh
-        // Chỉ dùng ffmpeg stream-audio khi là Douyin hoặc video không có track audio riêng
         const isDouyin = media.platform === 'douyin';
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
@@ -252,10 +265,8 @@ export default function App() {
 
         let downloadUrl = '';
         if (!isDouyin && rawAudioUrl && rawAudioUrl.startsWith('http')) {
-          // Luồng siêu tốc cho TikTok thông thường
           downloadUrl = `/api/tiktok/download?url=${encodeURIComponent(rawAudioUrl)}&filename=${encodeURIComponent(pathData.filename)}`;
         } else {
-          // Luồng bóc tách FFmpeg tốc độ cao cho Douyin / Video dài
           const source = videoUrl || rawAudioUrl;
           const durationParam = media.duration ? `&duration=${media.duration}` : '';
           downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}${durationParam}`;
@@ -278,19 +289,13 @@ export default function App() {
         const zipFilename = `@${media.author.uniqueId}_photo_slides.zip`;
         setDownloadProgressText(t('compressingPhotos'));
 
-        // Gọi Backend nén và pipe luồng ZIP trực tiếp xuống trình duyệt
         const response = await fetch('/api/tiktok/bundle-zip', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            items,
-            zipName: zipFilename,
-          }),
+          body: JSON.stringify({ items, zipName: zipFilename }),
         });
 
-        if (!response.ok) {
-          throw new Error('Không thể tạo file ZIP cho album ảnh.');
-        }
+        if (!response.ok) throw new Error('Không thể nén ZIP cho album ảnh.');
 
         const zipBlob = await response.blob();
         await downloadBlobSafely(zipBlob, zipFilename);
@@ -312,7 +317,6 @@ export default function App() {
         const photoDownloadUrl = `/api/tiktok/download?${photoParams.toString()}`;
 
         setDownloadProgressText(t('downloadingPhoto'));
-        // Chuyển ảnh đơn lẻ sang luồng tải trình duyệt
         triggerNativeBrowserDownload(photoDownloadUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, 'photo_single', 'photos');
 
@@ -322,13 +326,55 @@ export default function App() {
         }, 800);
       }
     } catch (err: any) {
-      console.error('Download error:', err);
+      console.error('Download single error:', err);
       window.alert(err?.message || 'Có lỗi xảy ra khi tải tệp.');
     } finally {
       setIsDownloading(false);
       setIsPaused(false);
       downloadSessionRef.current = null;
     }
+  };
+
+  const handleDownloadSingle = async (
+    media: TikTokMediaItem,
+    type: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'photo_single',
+    photoIndex?: number
+  ) => {
+    // 1. Nếu là Desktop: Bắt link tải ngay lập tức, KHÔNG hiện popup
+    if (!isMobileDevice()) {
+      return executeDownloadDirect(media, type, photoIndex);
+    }
+
+    // 2. Nếu là Mobile (Android/iOS): Hiển thị Modal xác nhận kiểu Safari
+    let filename = 'media.mp4';
+    let previewUrl = '';
+
+    if (type === 'video_hd' || type === 'video_sd') {
+      const pathData = buildFilePath(media, pathConfig, {
+        mediaType: 'video',
+        resolution: type === 'video_hd' ? 'HD' : 'SD',
+      });
+      filename = pathData.filename;
+      previewUrl = media.video.hd || media.video.noWatermark;
+    } else if (type === 'audio') {
+      const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
+      filename = pathData.filename;
+      previewUrl = media.audio?.url || media.video.hd || media.video.noWatermark;
+    } else if (type === 'photos_zip') {
+      filename = `@${media.author.uniqueId}_photo_slides.zip`;
+    } else if (type === 'photo_single' && typeof photoIndex === 'number') {
+      const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: photoIndex + 1 });
+      filename = pathData.filename;
+      previewUrl = media.images[photoIndex];
+    }
+
+    setPendingDownload({
+      media,
+      type,
+      photoIndex,
+      filename,
+      previewUrl,
+    });
   };
 
   const handleDirectDownload = async () => {
@@ -901,6 +947,27 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* Modal xác nhận chỉ kích hoạt trên Android & iOS */}
+      <DownloadConfirmModal
+        isOpen={Boolean(pendingDownload)}
+        filename={pendingDownload?.filename || ''}
+        onClose={() => setPendingDownload(null)}
+        onViewDirectly={
+          pendingDownload?.previewUrl
+            ? () => {
+                window.open(pendingDownload.previewUrl, '_blank');
+                setPendingDownload(null);
+              }
+            : undefined
+        }
+        onConfirmDownload={() => {
+          if (pendingDownload) {
+            const { media, type, photoIndex } = pendingDownload;
+            setPendingDownload(null);
+            executeDownloadDirect(media, type, photoIndex);
+          }
+        }}
+      />
     </div>
   );
 }
