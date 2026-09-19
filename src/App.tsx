@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Pause, Play } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { LanguageSelector } from './components/LanguageSelector';
 import { UrlInputBar } from './components/UrlInputBar';
@@ -23,6 +24,14 @@ const STORAGE_KEY_HISTORY = 'snaptikdou_history';
 interface DirectDownloadInfo {
   url: string;
   filename: string;
+}
+
+// Cấu trúc trạng thái thanh tiến trình riêng cho MP3
+interface AudioProgressState {
+  currentMB: string;
+  totalMB: string;
+  percent: number;
+  isPaused: boolean;
 }
 
 const streamFetchBlob = async (
@@ -119,6 +128,120 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [downloadProgressText, setDownloadProgressText] = useState<string>('');
   const downloadSessionRef = React.useRef<DownloadSession | null>(null);
+
+  // State chuyên biệt CHỈ DÀNH RIÊNG CHO TIẾN TRÌNH MP3
+  const [audioProgress, setAudioProgress] = useState<AudioProgressState | null>(null);
+
+  // Ref lưu giữ toàn bộ dữ liệu tạm thời khi Tạm dừng để Tải nối tiếp
+  const audioSessionRef = useRef<{
+    url: string;
+    filename: string;
+    media: TikTokMediaItem;
+    pathData: any;
+    receivedBytes: number;
+    totalBytes: number;
+    chunks: Uint8Array[];
+    abortController: AbortController | null;
+  } | null>(null);
+
+  // Hàm tải dữ liệu nối tiếp bằng fetch stream
+  const startOrResumeAudioFetch = async () => {
+    const session = audioSessionRef.current;
+    if (!session) return;
+
+    const controller = new AbortController();
+    session.abortController = controller;
+
+    setAudioProgress((prev) => (prev ? { ...prev, isPaused: false } : null));
+
+    try {
+      const headers: HeadersInit = {};
+      if (session.receivedBytes > 0) {
+        headers['Range'] = `bytes=${session.receivedBytes}-`;
+      }
+
+      const response = await fetch(session.url, {
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!response.ok && response.status !== 206) {
+        throw new Error(`Không thể kết nối (HTTP ${response.status})`);
+      }
+
+      // Lấy kích thước tổng thực tế từ Header
+      const contentRange = response.headers.get('Content-Range');
+      let fullTotal = session.totalBytes;
+      if (contentRange) {
+        const match = contentRange.match(/\/(\d+)/);
+        if (match) fullTotal = parseInt(match[1], 10);
+      } else if (!fullTotal) {
+        const cl = response.headers.get('Content-Length');
+        if (cl) fullTotal = parseInt(cl, 10);
+      }
+      session.totalBytes = fullTotal;
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Trình duyệt không hỗ trợ ReadableStream');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        if (value) {
+          session.chunks.push(value);
+          session.receivedBytes += value.length;
+
+          const curMB = (session.receivedBytes / (1024 * 1024)).toFixed(1);
+          let totMB = fullTotal > 0 ? (fullTotal / (1024 * 1024)).toFixed(1) : curMB;
+          let pct = fullTotal > 0 ? Math.min(99, Math.round((session.receivedBytes / fullTotal) * 100)) : 0;
+
+          setAudioProgress({
+            currentMB: curMB,
+            totalMB: totMB,
+            percent: pct,
+            isPaused: false,
+          });
+        }
+      }
+
+      // Khi tải đủ 100%: Ghép toàn bộ mảng chunks thành 1 blob hoàn chỉnh
+      const finalBlob = new Blob(session.chunks, { type: 'audio/mpeg' });
+      await downloadBlobSafely(finalBlob, session.filename);
+      addHistoryRecord(session.media, session.pathData.fullPath, 'audio', 'audio');
+
+      setAudioProgress(null);
+      audioSessionRef.current = null;
+      setIsDownloading(false);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        // Tạm dừng chủ động: Giữ nguyên session và các chunk đã tải
+        setAudioProgress((prev) => (prev ? { ...prev, isPaused: true } : null));
+      } else {
+        console.error('Audio download error:', err);
+        window.alert(err.message || 'Lỗi khi tải file âm thanh');
+        setAudioProgress(null);
+        audioSessionRef.current = null;
+        setIsDownloading(false);
+      }
+    }
+  };
+
+  // Nút Tạm dừng / Tiếp tục trên thanh tiến trình
+  const handleTogglePauseAudio = () => {
+    const session = audioSessionRef.current;
+    if (!session) return;
+
+    if (audioProgress?.isPaused) {
+      // Đang tạm dừng -> Tiếp tục tải nối tiếp từ vị trí đã tải
+      startOrResumeAudioFetch();
+    } else {
+      // Đang tải -> Ngắt kết nối mạng ngay để tạm dừng, giữ nguyên mảng byte
+      if (session.abortController) {
+        session.abortController.abort();
+      }
+    }
+  };
 
   const handlePauseDownload = () => {
     if (downloadSessionRef.current) {
@@ -296,9 +419,9 @@ export default function App() {
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
 
-        // Ước tính tổng dung lượng MP3 dựa trên thời lượng (128kbps ~ 16.000 bytes/s)
+        // Ước tính dung lượng nếu chưa có Content-Length (128kbps ~ 16,000 bytes/s)
         const durationSec = Number(media.duration || 0);
-        const estimatedTotalBytes = durationSec > 0 ? durationSec * 16000 : 0;
+        const estimatedBytes = durationSec > 0 ? durationSec * 16000 : 0;
 
         let downloadUrl = '';
         if (!isDouyin && rawAudioUrl && rawAudioUrl.startsWith('http')) {
@@ -308,29 +431,29 @@ export default function App() {
           downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}`;
         }
 
-        setDownloadProgressText('Chuẩn bị tải audio...');
+        // Khởi tạo phiên tải MP3 với mảng chunks rỗng
+        audioSessionRef.current = {
+          url: downloadUrl,
+          filename: pathData.filename,
+          media,
+          pathData,
+          receivedBytes: 0,
+          totalBytes: estimatedBytes,
+          chunks: [],
+          abortController: null,
+        };
 
-        // Tải MP3 qua streamFetchBlob với thanh tiến trình hiển thị: X MB / Y MB (Z%)
-        const audioBlob = await streamFetchBlob(downloadUrl, (receivedBytes, headerTotalBytes) => {
-          const totalBytes = headerTotalBytes > 0 ? headerTotalBytes : estimatedTotalBytes;
-          const currentMB = (receivedBytes / (1024 * 1024)).toFixed(1);
-
-          if (totalBytes > 0) {
-            const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
-            const percent = Math.min(99, Math.round((receivedBytes / totalBytes) * 100));
-            setDownloadProgressText(`Đang tải... ${currentMB} MB / ${totalMB} MB (${percent}%)`);
-          } else {
-            setDownloadProgressText(`Đang tải... ${currentMB} MB`);
-          }
+        const initTotalMB = estimatedBytes > 0 ? (estimatedBytes / (1024 * 1024)).toFixed(1) : '0.0';
+        setAudioProgress({
+          currentMB: '0.0',
+          totalMB: initTotalMB,
+          percent: 0,
+          isPaused: false,
         });
 
-        // Kích hoạt lưu file an toàn sau khi đã gom đủ blob trong RAM
-        await downloadBlobSafely(audioBlob, pathData.filename);
-        addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-
-        setDownloadProgressText('100% - Tải hoàn tất!');
-        setTimeout(() => setDownloadProgressText(''), 2500);
-
+        // Bắt đầu tải luồng
+        startOrResumeAudioFetch();
+        return; // Kết thúc nhánh audio, không can thiệp vào các nhánh khác
       } else if (type === 'photos_zip') {
         const items = media.images.map((imgUrl, idx) => {
           const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: idx + 1 });
@@ -380,9 +503,11 @@ export default function App() {
       console.error('Download single error:', err);
       window.alert(err?.message || 'Có lỗi xảy ra khi tải tệp.');
     } finally {
-      setIsDownloading(false);
-      setIsPaused(false);
-      downloadSessionRef.current = null;
+      if (type !== 'audio') {
+        setIsDownloading(false);
+        setIsPaused(false);
+        downloadSessionRef.current = null;
+      }
     }
   };
 
@@ -606,6 +731,44 @@ export default function App() {
                 theme={theme}
               />
             ) : null}
+
+            {/* THANH TIẾN TRÌNH: CHỈ XUẤT HIỆN KHI TẢI FILE MP3 */}
+            {audioProgress && (
+              <div className="mt-4 p-3.5 bg-sky-50 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 rounded-xl flex items-center justify-between gap-4 shadow-sm animate-in fade-in duration-200">
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between text-xs font-semibold text-sky-800 dark:text-sky-300 mb-1.5">
+                    <span>
+                      {audioProgress.isPaused ? 'Đã tạm dừng' : 'Đang tải MP3...'}
+                    </span>
+                    <span>
+                      {audioProgress.currentMB} MB / {audioProgress.totalMB} MB ({audioProgress.percent}%)
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-sky-200/60 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-150 rounded-full ${
+                        audioProgress.isPaused ? 'bg-amber-500' : 'bg-sky-500'
+                      }`}
+                      style={{ width: `${Math.max(3, audioProgress.percent)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* NÚT TẠM DỪNG / TIẾP TỤC */}
+                <button
+                  type="button"
+                  onClick={handleTogglePauseAudio}
+                  className="p-2 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 active:scale-90 transition-transform cursor-pointer flex items-center justify-center shrink-0"
+                  title={audioProgress.isPaused ? 'Tiếp tục tải' : 'Tạm dừng'}
+                >
+                  {audioProgress.isPaused ? (
+                    <Play className="w-4 h-4 text-emerald-600 dark:text-emerald-400 fill-emerald-600 dark:fill-emerald-400" />
+                  ) : (
+                    <Pause className="w-4 h-4 text-sky-600 dark:text-sky-400 fill-sky-600 dark:fill-sky-400" />
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

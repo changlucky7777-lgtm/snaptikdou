@@ -1453,16 +1453,6 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
 
-  // 1. HEADER CHUẨN ĐỂ KHÔNG BỊ KIỂM TRA LỆCH BYTE
-  res.setHeader('Content-Type', 'audio/mpeg');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
-  );
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  // TUYỆT ĐỐI KHÔNG SET Content-Length VÀ Accept-Ranges Ở ĐÂY
-
   const isDouyin =
     rawUrl.includes('douyin.com') ||
     rawUrl.includes('iesdouyin.com') ||
@@ -1473,12 +1463,43 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // 2. FFMPEG NÉN TỐC ĐỘ CAO VỚI LAME CHUẨN
-  const ffmpegProcess = spawn('ffmpeg', [
+  // Xử lý Range header gửi từ client khi Resume tải nối tiếp
+  const rangeHeader = req.headers.range;
+
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
+  );
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+
+  const ffmpegArgs = [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '10',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
+  ];
+
+  // Nếu có Range bắt đầu từ byte X (tải nối tiếp), tính thời gian để FFmpeg nhảy tới đúng vị trí
+  if (rangeHeader) {
+    const parts = rangeHeader.replace(/bytes=/, '').split('-');
+    const startByte = parseInt(parts[0], 10) || 0;
+    if (startByte > 0) {
+      // 128kbps = 16,000 bytes/s -> thời gian bắt đầu nhảy tới
+      const startSec = (startByte / 16000).toFixed(2);
+      ffmpegArgs.push('-ss', startSec);
+      res.status(206);
+    } else {
+      res.status(200);
+    }
+  } else {
+    res.status(200);
+  }
+
+  ffmpegArgs.push(
     '-i', rawUrl,
     '-vn',
     '-c:a', 'libmp3lame',
@@ -1486,10 +1507,11 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     '-preset', 'ultrafast',
     '-f', 'mp3',
     'pipe:1'
-  ]);
+  );
+
+  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
 
   ffmpegProcess.stdout.pipe(res);
-
   ffmpegProcess.stderr.on('data', () => {});
 
   ffmpegProcess.on('error', (err) => {
@@ -1497,9 +1519,8 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     if (!res.headersSent) res.status(500).end();
   });
 
-  // Đảm bảo đóng kết nối êm xuôi khi FFmpeg xử lý xong toàn bộ luồng
   ffmpegProcess.stdout.on('end', () => {
-    res.end();
+    if (!res.writableEnded) res.end();
   });
 
   req.on('close', () => {
