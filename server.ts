@@ -1439,7 +1439,6 @@ async function fetchMediaWithRetry(
 app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
   const requestedFilename = String(req.query.filename || 'audio.mp3').trim();
-  const rawDuration = Number(req.query.duration || 0);
 
   if (!rawUrl) {
     res.status(400).send('Thiếu URL âm thanh');
@@ -1454,23 +1453,15 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
 
-  // 1. Lấy phần nguyên của thời lượng (giây)
-  const durationSec = Math.floor(rawDuration);
-  const totalBytes = durationSec > 0 ? durationSec * 16000 : 0;
-
+  // 1. HEADER CHUẨN ĐỂ KHÔNG BỊ KIỂM TRA LỆCH BYTE
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
   );
-  res.setHeader('Accept-Ranges', 'none');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
-
-  // 2. Thiết lập Content-Length cố định chuẩn khớp với dữ liệu xuất ra
-  if (totalBytes > 0) {
-    res.setHeader('Content-Length', totalBytes.toString());
-  }
+  // TUYỆT ĐỐI KHÔNG SET Content-Length VÀ Accept-Ranges Ở ĐÂY
 
   const isDouyin =
     rawUrl.includes('douyin.com') ||
@@ -1482,8 +1473,8 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // 3. Khóa cứng cấu hình CBR để số byte xuất ra khớp 100% với Content-Length
-  const ffmpegArgs = [
+  // 2. FFMPEG NÉN TỐC ĐỘ CAO VỚI LAME CHUẨN
+  const ffmpegProcess = spawn('ffmpeg', [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '10',
@@ -1492,29 +1483,23 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     '-vn',
     '-c:a', 'libmp3lame',
     '-b:a', '128k',
-    '-minrate', '128k',
-    '-maxrate', '128k',
-    '-bufsize', '128k',
-    '-ar', '44100',
-    '-ac', '2',
-    '-id3v2_version', '0',
-    '-write_xing', '0',
-  ];
-
-  if (durationSec > 0) {
-    ffmpegArgs.push('-t', durationSec.toString());
-  }
-
-  ffmpegArgs.push('-f', 'mp3', 'pipe:1');
-
-  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+    '-preset', 'ultrafast',
+    '-f', 'mp3',
+    'pipe:1'
+  ]);
 
   ffmpegProcess.stdout.pipe(res);
+
   ffmpegProcess.stderr.on('data', () => {});
 
   ffmpegProcess.on('error', (err) => {
-    console.error('FFmpeg error:', err);
+    console.error('FFmpeg process error:', err);
     if (!res.headersSent) res.status(500).end();
+  });
+
+  // Đảm bảo đóng kết nối êm xuôi khi FFmpeg xử lý xong toàn bộ luồng
+  ffmpegProcess.stdout.on('end', () => {
+    res.end();
   });
 
   req.on('close', () => {
