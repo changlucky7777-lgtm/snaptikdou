@@ -1472,23 +1472,27 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
 
-  // KHÔNG DÙNG libmp3lame NỮA: Chuyển sang copy luồng âm thanh hoặc dùng bộ nén siêu nhẹ
-  // Luồng video Douyin chứa audio AAC, ta trích xuất AAC và đóng gói siêu tốc không tải CPU:
+  // Cấu hình FFmpeg loại bỏ xử lý video hoàn toàn và ghìm CPU ở mức thấp nhất
   const ffmpegArgs = [
+    '-threads', '1',
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '5',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
+    '-vn',                    // Khai báo bỏ video trước để không tốn CPU parse video track
     '-i', rawUrl,
-    '-vn',                     // Bỏ toàn bộ khung hình video (chống ra file MP4)
+    '-vn',
     '-c:a', 'libmp3lame',
-    '-q:a', '6',               // Nén siêu nhanh mức thấp nhất, không tốn tài nguyên CPU
-    '-threads', '1',           // Tuyệt đối không chiếm nhiều nhân
+    '-b:a', '128k',
+    '-threads', '1',          // Khóa cứng 1 nhân CPU
+    '-preset', 'ultrafast',
     '-f', 'mp3',
     'pipe:1'
   ];
 
-  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
+    // Chạy ở độ ưu tiên thấp (nice) để không tranh chấp tài nguyên hệ thống
+  });
 
   ffmpegProcess.stdout.pipe(res);
   ffmpegProcess.stderr.on('data', () => {});

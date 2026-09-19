@@ -161,20 +161,19 @@ export default function App() {
         throw new Error(`Không thể kết nối (HTTP ${response.status})`);
       }
 
-      // Lấy kích thước tổng thực tế từ Header
+      // Chỉ cập nhật totalBytes nếu header trả về giá trị thực sự lớn hơn 0
       const contentRange = response.headers.get('Content-Range');
-      let fullTotal = session.totalBytes;
+      const contentLength = response.headers.get('Content-Length');
+      
       if (contentRange) {
         const match = contentRange.match(/\/(\d+)/);
-        if (match) fullTotal = parseInt(match[1], 10);
-      } else if (!fullTotal) {
-        const cl = response.headers.get('Content-Length');
-        if (cl) fullTotal = parseInt(cl, 10);
+        if (match) session.totalBytes = parseInt(match[1], 10);
+      } else if (contentLength && parseInt(contentLength, 10) > 0) {
+        session.totalBytes = parseInt(contentLength, 10);
       }
-      session.totalBytes = fullTotal;
 
       const reader = response.body?.getReader();
-      if (!reader) throw new Error('Trình duyệt không hỗ trợ ReadableStream');
+      if (!reader) throw new Error('Trình duyệt không hỗ trợ stream');
 
       while (true) {
         const { done, value } = await reader.read();
@@ -185,37 +184,48 @@ export default function App() {
           session.receivedBytes += value.length;
 
           const curMB = (session.receivedBytes / (1024 * 1024)).toFixed(1);
-          let totMB = fullTotal > 0 ? (fullTotal / (1024 * 1024)).toFixed(1) : curMB;
-          let pct = fullTotal > 0 ? Math.min(99, Math.round((session.receivedBytes / fullTotal) * 100)) : 0;
+          
+          if (session.totalBytes > 0) {
+            const totMB = (session.totalBytes / (1024 * 1024)).toFixed(1);
+            // Tính % chuẩn xác, không để vượt quá 99% khi chưa đóng stream
+            const calculatedPercent = Math.min(99, Math.max(1, Math.round((session.receivedBytes / session.totalBytes) * 100)));
 
-          setAudioProgress({
-            currentMB: curMB,
-            totalMB: totMB,
-            percent: pct,
-            isPaused: false,
-          });
+            setAudioProgress({
+              currentMB: curMB,
+              totalMB: totMB,
+              percent: calculatedPercent,
+              isPaused: false,
+            });
+          } else {
+            setAudioProgress({
+              currentMB: curMB,
+              totalMB: '...',
+              percent: 50,
+              isPaused: false,
+            });
+          }
         }
       }
 
-      // Khi tải đủ 100%: Ghép toàn bộ mảng chunks thành 1 blob hoàn chỉnh
+      // Tải đủ 100%: hoàn thành và đóng modal
+      setAudioProgress((prev) => prev ? { ...prev, percent: 100 } : null);
+      
       const finalBlob = new Blob(session.chunks, { type: 'audio/mpeg' });
       await downloadBlobSafely(finalBlob, session.filename);
       addHistoryRecord(session.media, session.pathData.fullPath, 'audio', 'audio');
 
-      setAudioProgress(null);
-      audioSessionRef.current = null;
-      // Xóa thông báo khi kích hoạt tải xong
       setTimeout(() => {
-        setDownloadProgressText('');
+        setAudioProgress(null);
+        audioSessionRef.current = null;
         setIsDownloading(false);
-      }, 1500);
+      }, 800);
+
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        // Tạm dừng chủ động: Giữ nguyên session và các chunk đã tải
         setAudioProgress((prev) => (prev ? { ...prev, isPaused: true } : null));
       } else {
         console.error('Audio download error:', err);
-        window.alert(err.message || 'Lỗi khi tải file âm thanh');
+        window.alert(err.message || 'Lỗi tải audio');
         setAudioProgress(null);
         audioSessionRef.current = null;
         setIsDownloading(false);
@@ -432,16 +442,17 @@ export default function App() {
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
 
-        let downloadUrl = '';
+        // Ước tính tổng dung lượng chuẩn xác theo thời lượng video (128kbps = 16,000 bytes/s)
+        const durationSec = Number(media.duration || 0);
+        const estimatedTotalBytes = durationSec > 0 ? durationSec * 16000 : 0;
 
-        // Kiểm tra xem link audio có phải là link nhạc độc lập (không trùng link video)
+        let downloadUrl = '';
         const hasValidAudioStream = rawAudioUrl && 
                                     rawAudioUrl.startsWith('http') && 
                                     rawAudioUrl !== videoUrl &&
                                     !rawAudioUrl.includes('.mp4');
 
         if (hasValidAudioStream) {
-          // LUỒNG SIÊU ÊM 0% CPU: Link nhạc CDN độc lập từ Douyin/TikTok
           const downloadParams = new URLSearchParams({
             url: rawAudioUrl,
             filename: pathData.filename,
@@ -449,7 +460,6 @@ export default function App() {
           });
           downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
         } else {
-          // LUỒNG BÓC TÁCH ÂM THANH: Video không có link nhạc riêng -> Bóc âm thanh ra khỏi MP4
           const source = videoUrl || rawAudioUrl;
           downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}`;
         }
@@ -460,14 +470,15 @@ export default function App() {
           media,
           pathData,
           receivedBytes: 0,
-          totalBytes: 0,
+          totalBytes: estimatedTotalBytes, // Lưu mốc ước tính chuẩn làm mẫu số
           chunks: [],
           abortController: null,
         };
 
+        const totalMBText = estimatedTotalBytes > 0 ? (estimatedTotalBytes / (1024 * 1024)).toFixed(1) : '...';
         setAudioProgress({
           currentMB: '0.0',
-          totalMB: '...',
+          totalMB: totalMBText,
           percent: 0,
           isPaused: false,
         });
