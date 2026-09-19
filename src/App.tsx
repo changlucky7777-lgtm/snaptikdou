@@ -429,45 +429,44 @@ export default function App() {
       } else if (type === 'audio') {
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
 
-        const isDouyin = media.platform === 'douyin';
+        // Lấy link audio gốc (nếu có) hoặc fallback về link video
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
+        const targetUrl = (rawAudioUrl && rawAudioUrl.startsWith('http')) ? rawAudioUrl : videoUrl;
 
-        // Ước tính dung lượng nếu chưa có Content-Length (128kbps ~ 16,000 bytes/s)
-        const durationSec = Number(media.duration || 0);
-        const estimatedBytes = durationSec > 0 ? durationSec * 16000 : 0;
-
-        let downloadUrl = '';
-        if (!isDouyin && rawAudioUrl && rawAudioUrl.startsWith('http')) {
-          downloadUrl = `/api/tiktok/download?url=${encodeURIComponent(rawAudioUrl)}&filename=${encodeURIComponent(pathData.filename)}`;
-        } else {
-          const source = videoUrl || rawAudioUrl;
-          downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}`;
+        if (!targetUrl) {
+          throw new Error('Không tìm thấy link âm thanh hợp lệ.');
         }
 
-        // Khởi tạo phiên tải MP3 với mảng chunks rỗng
+        // DÙNG LẠI ROUTE DOWNLOAD PROXY THUẦN TÚY (DÃY KÝ TỰ MÃ HÓA, 0% CPU)
+        const downloadParams = new URLSearchParams({
+          url: targetUrl,
+          filename: pathData.filename,
+          mediaType: 'audio'
+        });
+        const downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
+
+        // Thiết lập phiên tải nối tiếp / fetch
         audioSessionRef.current = {
           url: downloadUrl,
           filename: pathData.filename,
           media,
           pathData,
           receivedBytes: 0,
-          totalBytes: estimatedBytes,
+          totalBytes: 0, // Sẽ tự động lấy Content-Length thực tế từ header của CDN
           chunks: [],
           abortController: null,
         };
 
-        const initTotalMB = estimatedBytes > 0 ? (estimatedBytes / (1024 * 1024)).toFixed(1) : '0.0';
         setAudioProgress({
           currentMB: '0.0',
-          totalMB: initTotalMB,
+          totalMB: '...',
           percent: 0,
           isPaused: false,
         });
 
-        // Bắt đầu tải luồng
         startOrResumeAudioFetch();
-        return; // Kết thúc nhánh audio, không can thiệp vào các nhánh khác
+        return;
       } else if (type === 'photos_zip') {
         const items = media.images.map((imgUrl, idx) => {
           const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: idx + 1 });
