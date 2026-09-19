@@ -1463,52 +1463,31 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // Xử lý Range header gửi từ client khi Resume tải nối tiếp
-  const rangeHeader = req.headers.range;
-
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
   );
-  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Accept-Ranges', 'none');
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
 
-  // Giới hạn số luồng (threads) để không vắt kiệt 100% CPU của VPS
+  // DÙNG CƠ CHẾ NÉN NHẸ HOẶC STREAM COPY TRỰC TIẾP
+  // Cờ -vn bỏ video, bitrate cố định nhanh nhất, không ép đa luồng phức tạp
   const ffmpegArgs = [
-    '-threads', '2',              // Tối đa 2 threads, tránh CPU rú hết công suất
     '-reconnect', '1',
     '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '10',
+    '-reconnect_delay_max', '5',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
-  ];
-
-  if (rangeHeader) {
-    const parts = rangeHeader.replace(/bytes=/, '').split('-');
-    const startByte = parseInt(parts[0], 10) || 0;
-    if (startByte > 0) {
-      const startSec = (startByte / 16000).toFixed(2);
-      ffmpegArgs.push('-ss', startSec);
-      res.status(206);
-    } else {
-      res.status(200);
-    }
-  } else {
-    res.status(200);
-  }
-
-  ffmpegArgs.push(
     '-i', rawUrl,
     '-vn',
     '-c:a', 'libmp3lame',
     '-b:a', '128k',
-    '-preset', 'ultrafast',
-    '-threads', '2',
+    '-compression_level', '0',   // Mức nén 0 = chạy nhanh nhất, tốn ít CPU nhất
+    '-threads', '1',             // Giới hạn đúng 1 luồng duy nhất, không cho phép rú CPU
     '-f', 'mp3',
     'pipe:1'
-  );
+  ];
 
   const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
 
@@ -1517,7 +1496,7 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
 
   ffmpegProcess.on('error', (err) => {
     console.error('FFmpeg process error:', err);
-    if (!res.headersSent) res.status(500).end();
+    if (!res.writableEnded) res.end();
   });
 
   ffmpegProcess.stdout.on('end', () => {

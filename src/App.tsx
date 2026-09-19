@@ -204,7 +204,11 @@ export default function App() {
 
       setAudioProgress(null);
       audioSessionRef.current = null;
-      setIsDownloading(false);
+      // Xóa thông báo khi kích hoạt tải xong
+      setTimeout(() => {
+        setDownloadProgressText('');
+        setIsDownloading(false);
+      }, 1500);
     } catch (err: any) {
       if (err.name === 'AbortError') {
         // Tạm dừng chủ động: Giữ nguyên session và các chunk đã tải
@@ -415,10 +419,12 @@ export default function App() {
         triggerNativeBrowserDownload(serverDownloadUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, type, 'video');
 
+        // XÓA BỎ HOÀN TOÀN ĐOẠN HIỆN "TẢI HOÀN THÀNH"
+        // Chỉ để trạng thái xử lý khoảng 1.5s rồi tắt hẳn
         setTimeout(() => {
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 2500);
-        }, 800);
+          setDownloadProgressText('');
+          setIsDownloading(false);
+        }, 1500);
 
       } else if (type === 'audio') {
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
@@ -483,8 +489,10 @@ export default function App() {
         await downloadBlobSafely(zipBlob, zipFilename);
 
         addHistoryRecord(media, `@${media.author.uniqueId}/photos/ (${items.length} ảnh)`, 'photos_zip', 'photos');
-        setDownloadProgressText(t('downloadCompleted'));
-        setTimeout(() => setDownloadProgressText(''), 3000);
+        setTimeout(() => {
+          setDownloadProgressText('');
+          setIsDownloading(false);
+        }, 1500);
 
       } else if (type === 'photo_single' && typeof photoIndex === 'number' && media.images?.[photoIndex]) {
         const imgUrl = media.images[photoIndex];
@@ -502,10 +510,11 @@ export default function App() {
         triggerNativeBrowserDownload(photoDownloadUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, 'photo_single', 'photos');
 
+        // Tắt ngay trạng thái loading sau khi trigger tải
         setTimeout(() => {
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 2000);
-        }, 800);
+          setDownloadProgressText('');
+          setIsDownloading(false);
+        }, 1000);
       }
     } catch (err: any) {
       console.error('Download single error:', err);
@@ -584,7 +593,10 @@ export default function App() {
       if (currentMedia) {
         addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
       }
-      setDownloadProgressText(t('downloadCompleted'));
+      setTimeout(() => {
+        setDownloadProgressText('');
+        setIsDownloading(false);
+      }, 1500);
     } catch (err: any) {
       if (err?.name === 'AbortError' || session.isCancelled) {
         setDownloadProgressText('Đã hủy');
