@@ -414,15 +414,10 @@ export function createDownloadSession(): DownloadSession {
   return session;
 }
 
-export type StreamProgressCallback = (progressText: string) => void;
-export interface StreamProgressOptions {
-  onProgress?: (loadedBytes: number, totalBytes: number) => void;
-}
-
 // Fetch media with real-time stream chunking, byte-size checking, network-level pause/resume (Range header), and progress tracking
 export async function streamFetchBlob(
   url: string,
-  onProgressOrOptions?: StreamProgressCallback | StreamProgressOptions,
+  onProgress?: (progressText: string) => void,
   timeoutMs: number = 45000,
   requestInit?: RequestInit,
   session?: DownloadSession | null
@@ -431,36 +426,6 @@ export async function streamFetchBlob(
   let received = 0;
   let totalExpectedLength = 0;
   let finalContentType = '';
-
-  const reportProgress = (currentReceived: number, total: number) => {
-    if (!onProgressOrOptions) return;
-    if (typeof onProgressOrOptions === 'object' && onProgressOrOptions.onProgress) {
-      onProgressOrOptions.onProgress(currentReceived, total);
-      return;
-    }
-    if (typeof onProgressOrOptions === 'function') {
-      const receivedMB = (currentReceived / (1024 * 1024)).toFixed(1);
-      if (total > 0) {
-        const totalMB = (total / (1024 * 1024)).toFixed(1);
-        const percent = Math.min(100, Math.round((currentReceived / total) * 100));
-        onProgressOrOptions(
-          i18n.t('downloadingProgress', {
-            loaded: `${receivedMB} MB`,
-            total: `${totalMB} MB`,
-            percent,
-          })
-        );
-      } else {
-        onProgressOrOptions(
-          i18n.t('downloadingProgress', {
-            loaded: `${receivedMB} MB`,
-            total: '... MB',
-            percent: 0,
-          })
-        );
-      }
-    }
-  };
 
   while (true) {
     if (session?.isCancelled) {
@@ -597,8 +562,25 @@ export async function streamFetchBlob(
     let streamInterruptedByPause = false;
 
     // Emit initial progress if this is the start
-    if (received === 0) {
-      reportProgress(0, totalExpectedLength);
+    if (onProgress && received === 0) {
+      if (totalExpectedLength > 0) {
+        const totalMB = (totalExpectedLength / (1024 * 1024)).toFixed(1);
+        onProgress(
+          i18n.t('downloadingProgress', {
+            loaded: '0.0 MB',
+            total: `${totalMB} MB`,
+            percent: 0,
+          })
+        );
+      } else {
+        onProgress(
+          i18n.t('downloadingProgress', {
+            loaded: '0.0 MB',
+            total: '... MB',
+            percent: 0,
+          })
+        );
+      }
     }
 
     try {
@@ -619,7 +601,28 @@ export async function streamFetchBlob(
         if (value) {
           chunks.push(value);
           received += value.length;
-          reportProgress(received, totalExpectedLength);
+          if (onProgress) {
+            const receivedMB = (received / (1024 * 1024)).toFixed(1);
+            if (totalExpectedLength > 0) {
+              const totalMB = (totalExpectedLength / (1024 * 1024)).toFixed(1);
+              const percent = Math.min(100, Math.round((received / totalExpectedLength) * 100));
+              onProgress(
+                i18n.t('downloadingProgress', {
+                  loaded: `${receivedMB} MB`,
+                  total: `${totalMB} MB`,
+                  percent,
+                })
+              );
+            } else {
+              onProgress(
+                i18n.t('downloadingProgress', {
+                  loaded: `${receivedMB} MB`,
+                  total: '... MB',
+                  percent: 0,
+                })
+              );
+            }
+          }
         }
       }
     } catch (readErr: any) {

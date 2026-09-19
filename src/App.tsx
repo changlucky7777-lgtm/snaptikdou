@@ -9,7 +9,6 @@ import { TikTokMediaItem, PathConfig, HistoryRecord } from './types';
 import { DEFAULT_PATH_CONFIG, buildFilePath } from './utils/pathBuilder';
 import { getInitialLanguage, saveLanguage, SupportedLang } from './i18n';
 import {
-  streamFetchBlob,
   triggerBlobDownload,
   triggerNativeBrowserDownload,
   downloadBlobSafely,
@@ -25,6 +24,42 @@ interface DirectDownloadInfo {
   url: string;
   filename: string;
 }
+
+const streamFetchBlob = async (
+  url: string,
+  onProgress?: (receivedBytes: number, totalBytes: number) => void
+): Promise<Blob> => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Tải tệp thất bại (HTTP ${response.status})`);
+  }
+
+  const contentLength = Number(response.headers.get('Content-Length') || 0);
+  const reader = response.body?.getReader();
+
+  if (!reader) {
+    return await response.blob();
+  }
+
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    if (value) {
+      chunks.push(value);
+      receivedBytes += value.length;
+      if (onProgress) {
+        onProgress(receivedBytes, contentLength);
+      }
+    }
+  }
+
+  const mimeType = response.headers.get('Content-Type') || 'audio/mpeg';
+  return new Blob(chunks, { type: mimeType });
+};
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -261,36 +296,39 @@ export default function App() {
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
 
-        // Ưu tiên link audio trực tiếp nếu là TikTok thông thường, ngược lại dùng stream-audio bóc tách qua FFmpeg
-        let audioDownloadUrl = '';
+        // Ước tính tổng dung lượng MP3 dựa trên thời lượng (128kbps ~ 16.000 bytes/s)
+        const durationSec = Number(media.duration || 0);
+        const estimatedTotalBytes = durationSec > 0 ? durationSec * 16000 : 0;
+
+        let downloadUrl = '';
         if (!isDouyin && rawAudioUrl && rawAudioUrl.startsWith('http')) {
-          audioDownloadUrl = `/api/tiktok/download?url=${encodeURIComponent(rawAudioUrl)}&filename=${encodeURIComponent(pathData.filename)}`;
+          downloadUrl = `/api/tiktok/download?url=${encodeURIComponent(rawAudioUrl)}&filename=${encodeURIComponent(pathData.filename)}`;
         } else {
           const source = videoUrl || rawAudioUrl;
-          audioDownloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source || '')}&filename=${encodeURIComponent(pathData.filename)}`;
+          downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}`;
         }
 
-        setDownloadProgressText(t('loadingAudio'));
+        setDownloadProgressText('Chuẩn bị tải audio...');
 
-        // Chuyển sang luồng fetch blob để hiển thị số MB theo thời gian thực trên mọi thiết bị
-        const audioBlob = await streamFetchBlob(audioDownloadUrl, {
-          onProgress: (loadedBytes, totalBytes) => {
-            const loadedMb = (loadedBytes / (1024 * 1024)).toFixed(1);
-            if (totalBytes && totalBytes > 0) {
-              const totalMb = (totalBytes / (1024 * 1024)).toFixed(1);
-              const percent = Math.min(100, Math.round((loadedBytes / totalBytes) * 100));
-              setDownloadProgressText(`Đang tải: ${loadedMb}/${totalMb} MB (${percent}%)`);
-            } else {
-              setDownloadProgressText(`Đang tải: ${loadedMb} MB...`);
-            }
-          },
+        // Tải MP3 qua streamFetchBlob với thanh tiến trình hiển thị: X MB / Y MB (Z%)
+        const audioBlob = await streamFetchBlob(downloadUrl, (receivedBytes, headerTotalBytes) => {
+          const totalBytes = headerTotalBytes > 0 ? headerTotalBytes : estimatedTotalBytes;
+          const currentMB = (receivedBytes / (1024 * 1024)).toFixed(1);
+
+          if (totalBytes > 0) {
+            const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
+            const percent = Math.min(99, Math.round((receivedBytes / totalBytes) * 100));
+            setDownloadProgressText(`Đang tải... ${currentMB} MB / ${totalMB} MB (${percent}%)`);
+          } else {
+            setDownloadProgressText(`Đang tải... ${currentMB} MB`);
+          }
         });
 
-        // Kích hoạt lưu file blob an toàn xuống thiết bị
+        // Kích hoạt lưu file an toàn sau khi đã gom đủ blob trong RAM
         await downloadBlobSafely(audioBlob, pathData.filename);
-
         addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-        setDownloadProgressText(t('downloadCompleted'));
+
+        setDownloadProgressText('100% - Tải hoàn tất!');
         setTimeout(() => setDownloadProgressText(''), 2500);
 
       } else if (type === 'photos_zip') {
@@ -398,7 +436,16 @@ export default function App() {
       setIsDownloading(true);
       setIsPaused(false);
       setDownloadProgressText('Đang tải tốc độ cao...');
-      const blob = await streamFetchBlob(directDownloadInfo.url, (p) => setDownloadProgressText(p), 45000, undefined, session);
+      const blob = await streamFetchBlob(directDownloadInfo.url, (receivedBytes, totalBytes) => {
+        const currentMB = (receivedBytes / (1024 * 1024)).toFixed(1);
+        if (totalBytes > 0) {
+          const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
+          const percent = Math.min(99, Math.round((receivedBytes / totalBytes) * 100));
+          setDownloadProgressText(`Đang tải... ${currentMB} MB / ${totalMB} MB (${percent}%)`);
+        } else {
+          setDownloadProgressText(`Đang tải... ${currentMB} MB`);
+        }
+      });
       if (session.isCancelled) return;
       await downloadBlobSafely(blob, directDownloadInfo.filename);
       if (currentMedia) {
