@@ -613,7 +613,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   onClick={() => onDownloadSingle(media, 'video_hd')}
                   disabled={isDownloading}
                   title={t('downloadVideoHd')}
-                  className={`btn-press active:scale-95 transition-all group relative flex items-center justify-between p-4 rounded-2xl border text-left cursor-pointer ${
+                  className={`group relative flex items-center justify-between p-4 rounded-2xl border text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 cursor-pointer ${
                     isLight
                       ? 'bg-white hover:bg-pink-50/40 border-pink-200 hover:border-pink-400 shadow-sm hover:shadow-md'
                       : 'border-pink-500/40 bg-gradient-to-br from-slate-850 to-slate-900 hover:from-slate-800 hover:to-slate-850 hover:border-pink-500/70 shadow-lg shadow-pink-950/20'
@@ -662,7 +662,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 onClick={() => onDownloadSingle(media, 'audio')}
                 disabled={isDownloading || (!media.audio?.url && !media.video?.noWatermark)}
                 title={t('downloadAudio')}
-                className={`btn-press active:scale-95 transition-all group relative flex items-center justify-between p-4 rounded-2xl border text-left ${
+                className={`group relative flex items-center justify-between p-4 rounded-2xl border text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 ${
                   !media.audio?.url && !media.video?.noWatermark
                     ? isLight
                       ? 'bg-slate-100 border-slate-200 opacity-40 cursor-not-allowed'

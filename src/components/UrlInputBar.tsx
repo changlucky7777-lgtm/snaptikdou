@@ -208,10 +208,10 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
         onClick={() => onExtract()}
         disabled={isLoading}
         style={{ borderRadius: '21px' }}
-        className={`btn-press active:scale-95 px-6 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all duration-200 whitespace-nowrap shadow-md touch-manipulation min-h-[40px] mx-auto cursor-pointer ${
+        className={`px-6 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all duration-200 whitespace-nowrap shadow-md touch-manipulation min-h-[40px] mx-auto cursor-pointer ${
           isLoading
             ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-            : 'bg-gradient-to-r from-pink-600 via-rose-600 to-pink-500 text-white hover:from-pink-500 hover:to-rose-500 shadow-pink-600/30 hover:scale-[1.02]'
+            : 'bg-gradient-to-r from-pink-600 via-rose-600 to-pink-500 text-white hover:from-pink-500 hover:to-rose-500 shadow-pink-600/30 hover:scale-[1.02] active:scale-[0.98]'
         }`}
       >
         {isLoading ? (
