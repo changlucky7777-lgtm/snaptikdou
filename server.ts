@@ -1,8 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
-import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import zlib from 'zlib';
 import { Readable } from 'stream';
 import { spawn } from 'child_process';
@@ -1447,7 +1445,6 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     return;
   }
 
-  // Tắt giới hạn timeout để duy trì socket liên tục
   req.socket.setTimeout(0);
   res.setTimeout(0);
 
@@ -1456,15 +1453,15 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
 
-  // 1. TRẢ VỀ HEADER NGAY LẬP TỨC: Trình duyệt Desktop & Android lập tức hiện thanh tải xuống
-  res.writeHead(200, {
-    'Content-Type': 'audio/mpeg',
-    'Content-Disposition': `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`,
-    'Access-Control-Allow-Origin': '*',
-    'Cache-Control': 'no-cache, no-transform',
-    'Connection': 'keep-alive',
-    'X-Content-Type-Options': 'nosniff'
-  });
+  // 1. HEADER CHUẨN ĐỂ KHÔNG BỊ KIỂM TRA LỆCH BYTE
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
+  );
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  // TUYỆT ĐỐI KHÔNG SET Content-Length VÀ Accept-Ranges Ở ĐÂY
 
   const isDouyin =
     rawUrl.includes('douyin.com') ||
@@ -1476,35 +1473,33 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // 2. KHỞI TẠO TIẾN TRÌNH FFMPEG XỬ LÝ SONG SONG VÀ ĐẨY DỮ LIỆU TỨC THÌ
-  const ffmpegArgs = [
+  // 2. FFMPEG NÉN TỐC ĐỘ CAO VỚI LAME CHUẨN
+  const ffmpegProcess = spawn('ffmpeg', [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '10',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
     '-i', rawUrl,
-    '-vn',                     // Bỏ qua luồng video
-    '-c:a', 'libmp3lame',      // Chuẩn hóa định dạng MP3
-    '-q:a', '4',               // Tối ưu hóa tốc độ nén âm thanh chất lượng tốt
-    '-threads', '0',           // Khai thác toàn bộ nhân CPU sẵn có
+    '-vn',
+    '-c:a', 'libmp3lame',
+    '-b:a', '128k',
+    '-preset', 'ultrafast',
     '-f', 'mp3',
     'pipe:1'
-  ];
+  ]);
 
-  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
-
-  // Pipe trực tiếp luồng dữ liệu ra response
   ffmpegProcess.stdout.pipe(res);
 
   ffmpegProcess.stderr.on('data', () => {});
 
   ffmpegProcess.on('error', (err) => {
-    console.error('FFmpeg error:', err);
-    if (!res.writableEnded) res.end();
+    console.error('FFmpeg process error:', err);
+    if (!res.headersSent) res.status(500).end();
   });
 
+  // Đảm bảo đóng kết nối êm xuôi khi FFmpeg xử lý xong toàn bộ luồng
   ffmpegProcess.stdout.on('end', () => {
-    if (!res.writableEnded) res.end();
+    res.end();
   });
 
   req.on('close', () => {
