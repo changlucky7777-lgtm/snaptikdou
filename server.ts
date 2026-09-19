@@ -1447,6 +1447,7 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     return;
   }
 
+  // Tắt giới hạn timeout để duy trì socket liên tục
   req.socket.setTimeout(0);
   res.setTimeout(0);
 
@@ -1454,6 +1455,16 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() ||
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
+
+  // 1. TRẢ VỀ HEADER NGAY LẬP TỨC: Trình duyệt Desktop & Android lập tức hiện thanh tải xuống
+  res.writeHead(200, {
+    'Content-Type': 'audio/mpeg',
+    'Content-Disposition': `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`,
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Content-Type-Options': 'nosniff'
+  });
 
   const isDouyin =
     rawUrl.includes('douyin.com') ||
@@ -1465,80 +1476,39 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // Tạo đường dẫn file tạm duy nhất trong /tmp
-  const tempFilePath = path.join(os.tmpdir(), `audio_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.mp3`);
-
+  // 2. KHỞI TẠO TIẾN TRÌNH FFMPEG XỬ LÝ SONG SONG VÀ ĐẨY DỮ LIỆU TỨC THÌ
   const ffmpegArgs = [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '10',
     '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
     '-i', rawUrl,
-    '-vn',
-    '-c:a', 'libmp3lame',
-    '-b:a', '128k',
-    '-preset', 'ultrafast',
-    '-y',
-    tempFilePath
+    '-vn',                     // Bỏ qua luồng video
+    '-c:a', 'libmp3lame',      // Chuẩn hóa định dạng MP3
+    '-q:a', '4',               // Tối ưu hóa tốc độ nén âm thanh chất lượng tốt
+    '-threads', '0',           // Khai thác toàn bộ nhân CPU sẵn có
+    '-f', 'mp3',
+    'pipe:1'
   ];
 
   const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
 
-  // Xử lý dọn dẹp an toàn file tạm
-  const cleanupTempFile = () => {
-    try {
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
-    } catch (_) {}
-  };
+  // Pipe trực tiếp luồng dữ liệu ra response
+  ffmpegProcess.stdout.pipe(res);
 
-  ffmpegProcess.on('close', (code) => {
-    if (code !== 0 || !fs.existsSync(tempFilePath)) {
-      cleanupTempFile();
-      if (!res.headersSent) res.status(500).send('Trích xuất âm thanh thất bại');
-      return;
-    }
-
-    try {
-      const stats = fs.statSync(tempFilePath);
-      const totalBytes = stats.size;
-
-      // Gửi chính xác Content-Length để iOS và Desktop hiển thị số MB thực tế
-      res.writeHead(200, {
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': totalBytes,
-        'Content-Disposition': `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`,
-        'Accept-Ranges': 'bytes',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-cache, no-transform'
-      });
-
-      const readStream = fs.createReadStream(tempFilePath);
-      readStream.pipe(res);
-
-      readStream.on('end', () => {
-        cleanupTempFile();
-      });
-
-      readStream.on('error', () => {
-        cleanupTempFile();
-      });
-    } catch (err) {
-      cleanupTempFile();
-      if (!res.headersSent) res.status(500).send('Lỗi đọc dữ liệu tệp');
-    }
-  });
+  ffmpegProcess.stderr.on('data', () => {});
 
   ffmpegProcess.on('error', (err) => {
-    console.error('FFmpeg process error:', err);
-    cleanupTempFile();
-    if (!res.headersSent) res.status(500).send('Lỗi xử lý FFmpeg');
+    console.error('FFmpeg error:', err);
+    if (!res.writableEnded) res.end();
+  });
+
+  ffmpegProcess.stdout.on('end', () => {
+    if (!res.writableEnded) res.end();
   });
 
   req.on('close', () => {
     ffmpegProcess.kill('SIGKILL');
-    cleanupTempFile();
   });
 });
 
