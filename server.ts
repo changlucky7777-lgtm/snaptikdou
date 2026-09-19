@@ -1439,10 +1439,10 @@ async function fetchMediaWithRetry(
 app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
   const requestedFilename = String(req.query.filename || 'audio.mp3').trim();
-  const duration = Number(req.query.duration || 0);
+  const rawDuration = Number(req.query.duration || 0);
 
   if (!rawUrl) {
-    res.status(400).send('Thiếu URL');
+    res.status(400).send('Thiếu URL âm thanh');
     return;
   }
 
@@ -1454,17 +1454,21 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     'audio.mp3';
   const encodedFilename = encodeURIComponent(requestedFilename);
 
+  // 1. Lấy phần nguyên của thời lượng (giây)
+  const durationSec = Math.floor(rawDuration);
+  const totalBytes = durationSec > 0 ? durationSec * 16000 : 0;
+
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
   );
-  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Accept-Ranges', 'none');
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
 
-  // Tính toán chính xác kích thước MP3 theo chuẩn CBR 128kbps (16000 bytes/s)
-  if (duration > 0) {
-    const totalBytes = Math.floor(duration * 16000);
+  // 2. Thiết lập Content-Length cố định chuẩn khớp với dữ liệu xuất ra
+  if (totalBytes > 0) {
     res.setHeader('Content-Length', totalBytes.toString());
   }
 
@@ -1478,7 +1482,7 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
 
-  // Cấu hình FFmpeg ép đúng chuẩn CBR 128k và cắt đuôi đúng thời lượng
+  // 3. Khóa cứng cấu hình CBR để số byte xuất ra khớp 100% với Content-Length
   const ffmpegArgs = [
     '-reconnect', '1',
     '-reconnect_streamed', '1',
@@ -1490,11 +1494,15 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     '-b:a', '128k',
     '-minrate', '128k',
     '-maxrate', '128k',
-    '-bufsize', '256k',
+    '-bufsize', '128k',
+    '-ar', '44100',
+    '-ac', '2',
+    '-id3v2_version', '0',
+    '-write_xing', '0',
   ];
 
-  if (duration > 0) {
-    ffmpegArgs.push('-t', duration.toString());
+  if (durationSec > 0) {
+    ffmpegArgs.push('-t', durationSec.toString());
   }
 
   ffmpegArgs.push('-f', 'mp3', 'pipe:1');
@@ -1503,6 +1511,11 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
 
   ffmpegProcess.stdout.pipe(res);
   ffmpegProcess.stderr.on('data', () => {});
+
+  ffmpegProcess.on('error', (err) => {
+    console.error('FFmpeg error:', err);
+    if (!res.headersSent) res.status(500).end();
+  });
 
   req.on('close', () => {
     ffmpegProcess.kill('SIGKILL');
