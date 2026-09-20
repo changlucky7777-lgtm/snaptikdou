@@ -460,30 +460,38 @@ export default function App() {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError' || session.isCancelled) {
-        setDownloadProgressText(t('cancelDownload') || 'Đã hủy');
+        setDownloadProgressText('Đã hủy');
         setTimeout(() => setDownloadProgressText(''), 2000);
         return;
       }
-      console.warn('Stream download failed, falling back to native browser download:', err);
 
-      // TỰ ĐỘNG CHUYỂN SANG NATIVE DOWNLOAD NGAY LẬP TỨC (KHÔNG CẦN BẤM NÚT NÀO NỮA)
+      console.error('Download single error, triggering fallback:', err);
       const fallbackUrl =
         type === 'video_hd'
           ? media.video.hd || media.video.noWatermark
           : type === 'video_sd'
           ? media.video.noWatermark || media.video.hd
           : type === 'audio'
-          ? media.audio?.url || media.video.hd || media.video.noWatermark
+          ? media.audio?.url
           : undefined;
 
       const directUrl = fallbackUrl || media.video.hd || media.video.noWatermark || media.url;
-      const pathData = buildFilePath(media, pathConfig, {
-        mediaType: type === 'audio' ? 'audio' : 'video',
-      });
+      const cleanTitle =
+        (media.title || 'video')
+          .replace(/[^\w\s\u4e00-\u9fa5\u00C0-\u1EF9_-]/gi, '')
+          .trim()
+          .slice(0, 40) || media.id || 'download';
+      const ext = type === 'audio' ? 'mp3' : 'mp4';
 
-      triggerNativeBrowserDownload(directUrl, pathData.filename);
-      addHistoryRecord(media, pathData.fullPath, type as any, type === 'audio' ? 'audio' : 'video');
-      setDownloadProgressText('');
+      if (directUrl) {
+        triggerNativeBrowserDownload(directUrl, `${cleanTitle}.${ext}`);
+        addHistoryRecord(media, `${cleanTitle}.${ext}`, type === 'audio' ? 'audio' : 'video_hd', type === 'audio' ? 'audio' : 'video');
+        setDownloadProgressText(t('downloadCompleted'));
+        setTimeout(() => setDownloadProgressText(''), 2500);
+      } else {
+        setDownloadProgressText(t('errorExtractFailed'));
+        setTimeout(() => setDownloadProgressText(''), 2500);
+      }
     } finally {
       setIsDownloading(false);
       setIsPaused(false);
