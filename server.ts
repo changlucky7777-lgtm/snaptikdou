@@ -1445,39 +1445,41 @@ app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
 });
 
 function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string) {
-  // Đổi đuôi sang .m4a để đúng chuẩn container AAC gốc của TikTok/Douyin
-  const baseName = filename.replace(/\.(mp3|mp4|m4a)$/i, '');
-  const finalFilename = `${baseName || 'audio'}.m4a`;
-  const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.m4a';
+  // Đổi đuôi file sang .aac hoặc .mp3 (ADTS stream tương thích hoàn hảo cả 2)
+  const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
+  const finalFilename = `${baseName}.mp3`;
+  const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim();
   const encodedFilename = encodeURIComponent(finalFilename);
 
-  res.setHeader('Content-Type', 'audio/mp4');
+  const isDouyin = /douyin|byteimg|zjcdn|ixigua/i.test(videoUrl);
+  const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
+  const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
+
+  res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
   );
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
-  // Đưa thẳng URL video vào FFmpeg, dùng lệnh copy luồng âm thanh (-c:a copy)
-  // Không giải mã, không tốn CPU, stream trực tiếp về client
-  const command = ffmpeg(videoUrl)
-    .noVideo()
-    .audioCodec('copy')               // STREAM COPY: Tốc độ ánh sáng, 0% CPU
-    .format('mp4')                    // Container chuẩn cho luồng AAC
-    .outputOptions([
-      '-movflags frag_keyframe+empty_moov', // Cần thiết để pipe luồng mp4/m4a trực tiếp ra HTTP
-    ]);
+  // Thêm header giả lập trình duyệt để CDN TikTok/Douyin không chặn kết nối
+  const ffmpegHeaders = `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`;
 
-  if (typeof videoUrl === 'string' && videoUrl.startsWith('http')) {
-    command.inputOptions([
-      '-user_agent',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    ]);
-  }
+  const command = ffmpeg()
+    .input(videoUrl)
+    .inputOptions([
+      `-headers`, ffmpegHeaders,      // Chống lỗi 403 Forbidden từ CDN TikTok
+      `-reconnect 1`,                 // Tự động kết nối lại nếu mạng chập chờn
+      `-reconnect_streamed 1`,
+      `-reconnect_delay_max 5`
+    ])
+    .noVideo()                        // Bỏ hình ảnh
+    .audioCodec('copy')               // Copy trực tiếp âm thanh gốc, 0% CPU
+    .format('adts');                  // Định dạng ADTS stream: chạy mượt bất chấp video dài 60 phút
 
   command.on('error', (err) => {
     if (!err.message.includes('Output stream closed')) {
-      console.warn('[Audio Copy Error]:', err.message);
+      console.warn('[Audio Stream Error]:', err.message);
     }
     if (!res.headersSent) {
       res.status(500).json({ success: false, message: 'Lỗi trích xuất audio' });
