@@ -288,11 +288,12 @@ export default function App() {
           addHistoryRecord(media, pathData.fullPath, type, 'video');
         }
       } else if (type === 'audio') {
+        // Đối với ảnh slide, bắt buộc lấy media.audio?.url
         const audioUrl = media.audio?.url || '';
         const videoFallbackUrl = media.video?.hd || media.video?.noWatermark || '';
 
         if (!audioUrl && !videoFallbackUrl) {
-          throw new Error('Không tìm thấy nguồn video hoặc âm thanh để trích xuất MP3.');
+          throw new Error('Không tìm thấy nguồn âm thanh cho bài viết này.');
         }
 
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
@@ -308,6 +309,7 @@ export default function App() {
         const downloadUrl = `/api/tiktok/download?${audioParams.toString()}`;
         setDownloadProgressText(t('loadingAudio'));
 
+        // Dùng Native Download trực tiếp của trình duyệt: mượt mà, không giật lag
         triggerNativeBrowserDownload(downloadUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
 

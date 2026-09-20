@@ -1533,14 +1533,43 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
         u.includes('amemv.com') ||
         u.includes('pstatp.com'));
 
-    const isDouyin = checkIsDouyin(rawUrl || '') || checkIsDouyin(postUrl || '');
-
+    // 1. XỬ LÝ RIÊNG CHO FILE ÂM THANH MP3
     if (isMp3Request) {
-      const audioSource = rawUrl || fallbackUrl || videoFallback;
-      if (audioSource) {
-        return transcodeVideoToMp3Stream(audioSource, res, requestedFilename);
+      // Ưu tiên 1: Link audio gốc từ nhạc nền (Cực kỳ quan trọng cho ALBUM ẢNH SLIDE)
+      const directAudioUrl = rawUrl || fallbackUrl;
+
+      if (directAudioUrl) {
+        const isDouyin = checkIsDouyin(directAudioUrl) || checkIsDouyin(postUrl);
+        const audioRes = await fetchMediaWithRetry(directAudioUrl, { isDouyin });
+
+        if (isValidMediaResponse(audioRes) && audioRes?.body) {
+          // File nhạc nền gốc của TikTok/Douyin: Stream thẳng trực tiếp về máy khách, KHÔNG qua FFmpeg
+          const safeFilename = requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim();
+          const encodedFilename = encodeURIComponent(requestedFilename);
+
+          res.setHeader('Content-Type', 'audio/mpeg');
+          res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
+          );
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+
+          const streamToPipe = typeof (audioRes.body as any)?.getReader === 'function'
+            ? Readable.fromWeb(audioRes.body as any)
+            : audioRes.body;
+
+          await pipeline(streamToPipe as any, res);
+          return;
+        }
+      }
+
+      // Ưu tiên 2: Nếu không có link nhạc riêng (Video nói chuyện dài, podcast...), mới dùng FFmpeg tách từ video
+      if (videoFallback) {
+        return transcodeVideoToMp3Stream(videoFallback, res, requestedFilename);
       }
     }
+
+    const isDouyin = checkIsDouyin(rawUrl || '') || checkIsDouyin(postUrl || '');
 
     const requestedRange = req.headers.range as string | undefined;
 
