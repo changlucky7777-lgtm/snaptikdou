@@ -288,70 +288,31 @@ export default function App() {
           addHistoryRecord(media, pathData.fullPath, type, 'video');
         }
       } else if (type === 'audio') {
-        const audioUrl = media.audio?.url || (media.mediaType === 'photos' ? media.video?.noWatermark : '');
-        if (!audioUrl) {
-          throw new Error('Không tìm thấy đường dẫn âm thanh MP3 của bài viết này.');
+        const audioUrl = media.audio?.url || '';
+        const videoFallbackUrl = media.video?.hd || media.video?.noWatermark || '';
+
+        if (!audioUrl && !videoFallbackUrl) {
+          throw new Error('Không tìm thấy nguồn video hoặc âm thanh để trích xuất MP3.');
         }
 
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
         const audioParams = new URLSearchParams({
           url: audioUrl,
+          fallbackUrl: audioUrl,
+          videoFallback: videoFallbackUrl,
           postUrl: media.url,
           mediaType: 'audio',
           filename: pathData.filename,
         });
+
         const downloadUrl = `/api/tiktok/download?${audioParams.toString()}`;
-
         setDownloadProgressText(t('loadingAudio'));
-        let blob: Blob | null = null;
 
-        if (audioUrl && !audioUrl.startsWith('/api/')) {
-          try {
-            blob = await streamFetchBlob(audioUrl, (p) => setDownloadProgressText(p), 20000, undefined, session);
-          } catch (cdnErr: any) {
-            if (session.isCancelled || cdnErr?.name === 'AbortError') throw cdnErr;
-          }
-        }
+        triggerNativeBrowserDownload(downloadUrl, pathData.filename);
+        addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
 
-        if (!blob) {
-          try {
-            blob = await streamFetchBlob(
-              '/api/tiktok/download',
-              (progressText) => setDownloadProgressText(progressText),
-              30000,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  url: audioUrl,
-                  postUrl: media.url,
-                  mediaType: 'audio',
-                  filename: pathData.filename,
-                }),
-              },
-              session
-            );
-          } catch (err: any) {
-            if (session.isCancelled || err?.name === 'AbortError') throw err;
-            try {
-              blob = await streamFetchBlob(downloadUrl, (p) => setDownloadProgressText(p), 30000, undefined, session);
-            } catch (err2: any) {
-              if (session.isCancelled || err2?.name === 'AbortError') throw err2;
-            }
-          }
-        }
-
-        if (session.isCancelled) return;
-
-        if (blob) {
-          await downloadBlobSafely(blob, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 3000);
-        } else {
-          triggerNativeBrowserDownload(downloadUrl, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-        }
+        setDownloadProgressText(t('downloadCompleted'));
+        setTimeout(() => setDownloadProgressText(''), 2500);
       } else if (type === 'photos_zip') {
         const items = media.images.map((imgUrl, idx) => {
           const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: idx + 1 });
