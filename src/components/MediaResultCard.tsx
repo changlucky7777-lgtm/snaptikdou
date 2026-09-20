@@ -740,7 +740,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
-
         </div>
       </div>
     </div>

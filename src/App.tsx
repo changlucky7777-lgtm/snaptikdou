@@ -460,12 +460,30 @@ export default function App() {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError' || session.isCancelled) {
-        setDownloadProgressText('Đã hủy');
+        setDownloadProgressText(t('cancelDownload') || 'Đã hủy');
         setTimeout(() => setDownloadProgressText(''), 2000);
         return;
       }
-      console.error('Download single error:', err);
-      window.alert(err?.message || 'Có lỗi xảy ra khi tải tệp.');
+      console.warn('Stream download failed, falling back to native browser download:', err);
+
+      // TỰ ĐỘNG CHUYỂN SANG NATIVE DOWNLOAD NGAY LẬP TỨC (KHÔNG CẦN BẤM NÚT NÀO NỮA)
+      const fallbackUrl =
+        type === 'video_hd'
+          ? media.video.hd || media.video.noWatermark
+          : type === 'video_sd'
+          ? media.video.noWatermark || media.video.hd
+          : type === 'audio'
+          ? media.audio?.url || media.video.hd || media.video.noWatermark
+          : undefined;
+
+      const directUrl = fallbackUrl || media.video.hd || media.video.noWatermark || media.url;
+      const pathData = buildFilePath(media, pathConfig, {
+        mediaType: type === 'audio' ? 'audio' : 'video',
+      });
+
+      triggerNativeBrowserDownload(directUrl, pathData.filename);
+      addHistoryRecord(media, pathData.fullPath, type as any, type === 'audio' ? 'audio' : 'video');
+      setDownloadProgressText('');
     } finally {
       setIsDownloading(false);
       setIsPaused(false);
