@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Pause, Play } from 'lucide-react';
+import { Pause, Play, Download, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { LanguageSelector } from './components/LanguageSelector';
 import { UrlInputBar } from './components/UrlInputBar';
@@ -60,15 +60,6 @@ const streamFetchBlob = async (
 
   const mimeType = response.headers.get('Content-Type') || 'audio/mpeg';
   return new Blob(chunks, { type: mimeType });
-};
-
-// Nhận diện chính xác thiết bị iOS (iPhone, iPad, iPod)
-export const isIOSDevice = () => {
-  if (typeof window === 'undefined') return false;
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
 };
 
 export default function App() {
@@ -132,6 +123,8 @@ export default function App() {
 
   // State chuyên biệt CHỈ DÀNH RIÊNG CHO TIẾN TRÌNH MP3
   const [audioProgress, setAudioProgress] = useState<AudioProgressState | null>(null);
+  // State quản lý banner hướng dẫn lưu tệp trên màn hình (đặc biệt cho iOS)
+  const [showSaveNotice, setShowSaveNotice] = useState(false);
 
   // Ref lưu giữ toàn bộ dữ liệu tạm thời khi Tạm dừng để Tải nối tiếp
   const audioSessionRef = useRef<{
@@ -216,39 +209,53 @@ export default function App() {
         }
       }
 
-      // =========================================================================
-      // KHI DỮ LIỆU ĐÃ TẢI XONG 100% TRONG BỘ NHỚ RAM
-      // =========================================================================
-      const isIOS = isIOSDevice();
+      // Khi đọc xong 100% dữ liệu từ stream:
+      const finalBlob = new Blob(session.chunks, { type: 'audio/mpeg' });
 
+      // 1. Đổi text thanh tiến trình thành "Đã chuẩn bị xong tệp!"
       setAudioProgress((prev) =>
         prev
           ? {
               ...prev,
               percent: 100,
               currentMB: prev.totalMB !== '...' ? prev.totalMB : prev.currentMB,
-              isCompleted: true, // Đánh dấu đã hoàn thành 100%
             }
           : null
       );
 
-      const finalBlob = new Blob(session.chunks, { type: 'audio/mpeg' });
+      // 2. Hiển thị thông báo nổi hướng dẫn người dùng bấm nút "Tải về" của iOS
+      setShowSaveNotice(true);
 
-      // Kích hoạt lưu file (trên iOS Safari sẽ kích hoạt popup hệ thống)
+      // 3. Cơ chế tự động ẩn thông báo ngay khi người dùng tương tác xong với popup iOS
+      const handleWindowInteraction = () => {
+        setShowSaveNotice(false);
+        setAudioProgress(null);
+        audioSessionRef.current = null;
+        setIsDownloading(false);
+        window.removeEventListener('focus', handleWindowInteraction);
+        window.removeEventListener('touchstart', handleWindowInteraction);
+      };
+
+      // Lắng nghe sự kiện lấy lại focus hoặc chạm màn hình khi popup hệ thống đóng
+      window.addEventListener('focus', handleWindowInteraction, { once: true });
+      window.addEventListener('touchstart', handleWindowInteraction, { once: true });
+
+      // Fallback tự ẩn sau 5 giây nếu sự kiện focus không kích hoạt kịp
+      setTimeout(() => {
+        handleWindowInteraction();
+      }, 5000);
+
+      // 4. Kích hoạt Popup của hệ thống xuất hiện cùng lúc
       await downloadBlobSafely(finalBlob, session.filename);
       addHistoryRecord(session.media, session.pathData.fullPath, 'audio', 'audio');
 
-      // GIỮ NGUYÊN THÔNG BÁO TRÊN GIAO DIỆN, KHÔNG TỰ ĐỘNG ẨN BẰNG SETTIMEOUT!
-      // Chỉ dọn dẹp các biến kết nối và socket nền
-      audioSessionRef.current = null;
-      setIsDownloading(false);
-
     } catch (err: any) {
+      setShowSaveNotice(false);
       if (err.name === 'AbortError') {
         setAudioProgress((prev) => (prev ? { ...prev, isPaused: true } : null));
       } else {
         console.error('Audio download error:', err);
-        window.alert(err.message || 'Lỗi tải audio');
+        window.alert(err.message || 'Lỗi khi tải file âm thanh');
         setAudioProgress(null);
         audioSessionRef.current = null;
         setIsDownloading(false);
@@ -566,6 +573,15 @@ export default function App() {
         downloadSessionRef.current = null;
       }
     }
+  };
+
+  // Nhận diện chính xác thiết bị iOS (iPhone, iPad, iPod)
+  const isIOSDevice = () => {
+    if (typeof window === 'undefined') return false;
+    return (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
   };
 
   const handleDownloadSingle = async (
@@ -1223,6 +1239,28 @@ export default function App() {
           }
         }}
       />
+
+      {/* THÔNG BÁO HƯỚNG DẪN BẤM "TẢI VỀ" TRÊN POPUP HỆ THỐNG */}
+      {showSaveNotice && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md bg-emerald-600 text-white px-4 py-3.5 rounded-2xl shadow-xl border border-emerald-400/30 flex items-start gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="p-1.5 bg-white/20 rounded-full shrink-0 mt-0.5">
+            <Download className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex-1 text-xs sm:text-sm font-medium leading-relaxed">
+            <p className="font-bold text-white mb-0.5">Đã chuẩn bị xong tệp!</p>
+            <p className="text-emerald-50">
+              Vui lòng nhấn <span className="underline font-bold text-white">"Tải về"</span> ở thông báo trên màn hình để lưu vào máy.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSaveNotice(false)}
+            className="text-emerald-100 hover:text-white p-1 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

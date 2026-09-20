@@ -21,7 +21,6 @@ import {
   X,
 } from 'lucide-react';
 import { TikTokMediaItem, AudioProgressState } from '../types';
-import { isIOSDevice } from '../App';
 
 interface MediaResultCardProps {
   media: TikTokMediaItem;
@@ -472,44 +471,31 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               {/* KHU VỰC BÊN PHẢI: Thanh tiến trình MP3 thay thế vị trí số 2 */}
               <div className="flex items-center gap-2 flex-wrap">
                 {audioProgress ? (
-                  <div
-                    className={`flex items-center gap-3 px-3.5 py-1.5 rounded-full shadow-xs border transition-all duration-200 ${
-                      audioProgress.isCompleted
-                        ? 'bg-emerald-50/95 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300'
-                        : 'bg-sky-50/90 dark:bg-slate-800 border-sky-200 dark:border-slate-700'
-                    }`}
-                  >
-                    {/* NẾU ĐÃ HOÀN TẤT 100%: HIỆN THÔNG BÁO HƯỚNG DẪN DÀNH CHO NGƯỜI DÙNG */}
-                    {audioProgress.isCompleted ? (
-                      <div className="flex items-center gap-2 text-xs font-medium">
-                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>
-                          {isIOSDevice()
-                            ? 'Đã chuẩn bị xong tệp! Vui lòng nhấn "Tải về" ở thông báo trên màn hình để lưu vào máy.'
-                            : 'Đã chuẩn bị xong tệp âm thanh!'}
-                        </span>
+                  <div className="flex items-center gap-3 bg-sky-50/90 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-xs animate-in fade-in duration-150">
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 sm:w-28 h-2 bg-sky-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-150 rounded-full ${
+                            audioProgress.isPaused
+                              ? 'bg-amber-500'
+                              : audioProgress.percent === 100
+                              ? 'bg-emerald-500'
+                              : 'bg-sky-500'
+                          }`}
+                          style={{ width: `${Math.max(4, audioProgress.percent)}%` }}
+                        />
                       </div>
-                    ) : (
-                      /* KHI ĐANG TẢI (0% -> 99%): HIỆN THANH CHẠY VÀ SỐ MB */
-                      <div className="flex items-center gap-2">
-                        <div className="w-20 sm:w-28 h-2 bg-sky-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all duration-150 rounded-full ${
-                              audioProgress.isPaused ? 'bg-amber-500' : 'bg-sky-500'
-                            }`}
-                            style={{ width: `${Math.max(4, audioProgress.percent)}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                          {audioProgress.isPaused
-                            ? 'Đã tạm dừng'
-                            : `${audioProgress.currentMB}/${audioProgress.totalMB} MB (${audioProgress.percent}%)`}
-                        </span>
-                      </div>
-                    )}
+                      <span className="text-xs font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                        {audioProgress.percent === 100
+                          ? 'Đã chuẩn bị xong tệp!'
+                          : audioProgress.isPaused
+                          ? 'Đã tạm dừng'
+                          : `${audioProgress.currentMB}/${audioProgress.totalMB} MB (${audioProgress.percent}%)`}
+                      </span>
+                    </div>
 
-                    {/* NÚT TẠM DỪNG / TIẾP TỤC (ẨN KHI ĐÃ ĐẠT 100%) */}
-                    {!audioProgress.isCompleted && (
+                    {/* Nút Tạm dừng / Tiếp tục (ẩn đi khi đã đạt 100% để lưu) */}
+                    {audioProgress.percent < 100 && (
                       <button
                         type="button"
                         onClick={onTogglePauseAudio}
@@ -524,18 +510,17 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                       </button>
                     )}
 
-                    {/* NÚT ĐÓNG / HỦY (LUÔN CÓ ĐỂ NGƯỜI DÙNG CHỦ ĐỘNG TẮT THÔNG BÁO) */}
+                    {/* Nút Hủy tải xuống */}
                     <button
                       type="button"
                       onClick={onCancelAudioDownload}
-                      className="p-1 rounded-full hover:bg-slate-200/60 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 active:scale-90 transition-transform cursor-pointer"
-                      title={audioProgress.isCompleted ? 'Đóng thông báo' : 'Hủy tải xuống'}
+                      className="p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/40 text-slate-400 hover:text-red-500 active:scale-90 transition-transform cursor-pointer"
+                      title="Hủy tải xuống"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ) : downloadProgressText ? (
-                  /* Trạng thái xử lý nhẹ khi bắt đầu tải MP4 hoặc ZIP */
                   <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-500" />
                     <span>{downloadProgressText}</span>
