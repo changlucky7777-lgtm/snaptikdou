@@ -468,42 +468,49 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 <span>{t('downloadOptions') || 'Tùy chọn tải về'}</span>
               </div>
 
-              {/* KHU VỰC BÊN PHẢI: Nếu đang tải MP3 thì hiện THANH TIẾN TRÌNH (kèm Tạm dừng + Hủy). 
-                  Nếu tải loại khác thì hiện chữ xoay vòng thông thường */}
+              {/* KHU VỰC BÊN PHẢI: Thanh tiến trình MP3 thay thế vị trí số 2 */}
               <div className="flex items-center gap-2 flex-wrap">
                 {audioProgress ? (
-                  /* THAY THẾ VỊ TRÍ SỐ 2 BẰNG THANH TIẾN TRÌNH MP3 ĐẦY ĐỦ TIỆN ÍCH */
                   <div className="flex items-center gap-3 bg-sky-50/90 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-xs animate-in fade-in duration-150">
-                    {/* Thanh bar thu nhỏ và chỉ số % */}
                     <div className="flex items-center gap-2">
                       <div className="w-20 sm:w-28 h-2 bg-sky-200 dark:bg-slate-700 rounded-full overflow-hidden">
                         <div
                           className={`h-full transition-all duration-150 rounded-full ${
-                            audioProgress.isPaused ? 'bg-amber-500' : 'bg-sky-500'
+                            audioProgress.isPaused
+                              ? 'bg-amber-500'
+                              : audioProgress.percent === 100
+                              ? 'bg-emerald-500'
+                              : 'bg-sky-500'
                           }`}
                           style={{ width: `${Math.max(4, audioProgress.percent)}%` }}
                         />
                       </div>
                       <span className="text-xs font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                        {audioProgress.isPaused ? 'Tạm dừng' : `${audioProgress.currentMB}/${audioProgress.totalMB} MB`} ({audioProgress.percent}%)
+                        {audioProgress.percent === 100
+                          ? 'Sẵn sàng lưu tệp...'
+                          : audioProgress.isPaused
+                          ? 'Đã tạm dừng'
+                          : `${audioProgress.currentMB}/${audioProgress.totalMB} MB (${audioProgress.percent}%)`}
                       </span>
                     </div>
 
-                    {/* Nút Tạm dừng / Tiếp tục */}
-                    <button
-                      type="button"
-                      onClick={onTogglePauseAudio}
-                      className="p-1 rounded-full hover:bg-sky-200/60 dark:hover:bg-slate-700 text-sky-600 dark:text-sky-400 active:scale-90 transition-transform cursor-pointer"
-                      title={audioProgress.isPaused ? 'Tiếp tục tải' : 'Tạm dừng'}
-                    >
-                      {audioProgress.isPaused ? (
-                        <Play className="w-3.5 h-3.5 fill-current text-emerald-600" />
-                      ) : (
-                        <Pause className="w-3.5 h-3.5 fill-current text-sky-600" />
-                      )}
-                    </button>
+                    {/* Nút Tạm dừng / Tiếp tục (ẩn đi khi đã đạt 100% để lưu) */}
+                    {audioProgress.percent < 100 && (
+                      <button
+                        type="button"
+                        onClick={onTogglePauseAudio}
+                        className="p-1 rounded-full hover:bg-sky-200/60 dark:hover:bg-slate-700 text-sky-600 dark:text-sky-400 active:scale-90 transition-transform cursor-pointer"
+                        title={audioProgress.isPaused ? 'Tiếp tục tải' : 'Tạm dừng'}
+                      >
+                        {audioProgress.isPaused ? (
+                          <Play className="w-3.5 h-3.5 fill-current text-emerald-600" />
+                        ) : (
+                          <Pause className="w-3.5 h-3.5 fill-current text-sky-600" />
+                        )}
+                      </button>
+                    )}
 
-                    {/* Nút HỦY tải xuống */}
+                    {/* Nút Hủy tải xuống */}
                     <button
                       type="button"
                       onClick={onCancelAudioDownload}
@@ -514,7 +521,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                     </button>
                   </div>
                 ) : downloadProgressText ? (
-                  /* Trạng thái loading thông thường khi tải MP4 hoặc ZIP (Mục số 2 cũ) */
                   <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-pink-500" />
                     <span>{downloadProgressText}</span>

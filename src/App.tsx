@@ -207,18 +207,29 @@ export default function App() {
         }
       }
 
-      // Tải đủ 100%: hoàn thành và đóng modal
-      setAudioProgress((prev) => prev ? { ...prev, percent: 100 } : null);
-      
+      // ĐỔI THÔNG ĐIỆP HƯỚNG DẪN KHI DỮ LIỆU ĐÃ GOM ĐỦ TRONG RAM
+      setAudioProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              percent: 100,
+              currentMB: prev.totalMB !== '...' ? prev.totalMB : prev.currentMB,
+            }
+          : null
+      );
+
       const finalBlob = new Blob(session.chunks, { type: 'audio/mpeg' });
+
+      // Gọi lệnh lưu file (Safari iOS sẽ mở hộp thoại xác nhận lưu)
       await downloadBlobSafely(finalBlob, session.filename);
       addHistoryRecord(session.media, session.pathData.fullPath, 'audio', 'audio');
 
+      // Tự động đóng thanh tiến trình sau khi kích hoạt lưu file
       setTimeout(() => {
         setAudioProgress(null);
         audioSessionRef.current = null;
         setIsDownloading(false);
-      }, 800);
+      }, 1500);
 
     } catch (err: any) {
       if (err.name === 'AbortError') {
