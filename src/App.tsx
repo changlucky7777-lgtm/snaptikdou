@@ -15,6 +15,7 @@ import {
   createClientZipArchive,
   createDownloadSession,
   DownloadSession,
+  isIOSDevice,
 } from './utils/fileSystem';
 
 const STORAGE_KEY_CONFIG = 'snaptikdou_path_config';
@@ -23,6 +24,14 @@ const STORAGE_KEY_HISTORY = 'snaptikdou_history';
 interface DirectDownloadInfo {
   url: string;
   filename: string;
+}
+
+export interface AudioProgressState {
+  currentMB: string;
+  totalMB: string;
+  percent: number;
+  isPaused: boolean;
+  isIOS: boolean;
 }
 
 export default function App() {
@@ -68,6 +77,141 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(false);
   const [downloadProgressText, setDownloadProgressText] = useState<string>('');
   const downloadSessionRef = React.useRef<DownloadSession | null>(null);
+
+  const [audioProgress, setAudioProgress] = useState<AudioProgressState | null>(null);
+  const audioSessionRef = React.useRef<{
+    url: string;
+    filename: string;
+    media: TikTokMediaItem;
+    pathData: { fullPath: string; filename: string; relativePath: string };
+    receivedBytes: number;
+    totalBytes: number;
+    chunks: Uint8Array[];
+    abortController: AbortController | null;
+  } | null>(null);
+
+  const startOrResumeAudioFetch = async () => {
+    const session = audioSessionRef.current;
+    if (!session) return;
+
+    const controller = new AbortController();
+    session.abortController = controller;
+
+    try {
+      const headers: Record<string, string> = {};
+      if (session.receivedBytes > 0) {
+        headers['Range'] = `bytes=${session.receivedBytes}-`;
+      }
+
+      const res = await fetch(session.url, {
+        signal: controller.signal,
+        headers,
+      });
+
+      if (!res.ok && res.status !== 206) {
+        throw new Error(`HTTP error ${res.status}`);
+      }
+
+      const contentLenHeader = res.headers.get('content-length');
+      if (contentLenHeader && !session.totalBytes) {
+        const len = parseInt(contentLenHeader, 10);
+        if (len > 0) session.totalBytes = len;
+      }
+
+      if (!res.body) {
+        const blob = await res.blob();
+        await downloadBlobSafely(blob, session.filename);
+        addHistoryRecord(session.media, session.pathData.fullPath, 'audio', 'audio');
+        setAudioProgress((prev) => (prev ? { ...prev, percent: 100, isPaused: false } : null));
+        setTimeout(() => {
+          setAudioProgress(null);
+          setIsDownloading(false);
+          audioSessionRef.current = null;
+        }, 1500);
+        return;
+      }
+
+      const reader = res.body.getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          session.chunks.push(value);
+          session.receivedBytes += value.length;
+
+          const currentMB = (session.receivedBytes / (1024 * 1024)).toFixed(1);
+          const totalMBText =
+            session.totalBytes > 0 ? (session.totalBytes / (1024 * 1024)).toFixed(1) : '...';
+          const percent =
+            session.totalBytes > 0
+              ? Math.min(99, Math.round((session.receivedBytes / session.totalBytes) * 100))
+              : Math.min(95, Math.round(session.receivedBytes / 50000));
+
+          setAudioProgress({
+            currentMB,
+            totalMB: totalMBText,
+            percent,
+            isPaused: false,
+            isIOS: false,
+          });
+        }
+      }
+
+      const blob = new Blob(session.chunks, { type: 'audio/mpeg' });
+      await downloadBlobSafely(blob, session.filename);
+      addHistoryRecord(session.media, session.pathData.fullPath, 'audio', 'audio');
+
+      const finalMB = (session.receivedBytes / (1024 * 1024)).toFixed(1);
+      setAudioProgress({
+        currentMB: finalMB,
+        totalMB: finalMB,
+        percent: 100,
+        isPaused: false,
+        isIOS: false,
+      });
+
+      setTimeout(() => {
+        setAudioProgress(null);
+        setIsDownloading(false);
+        audioSessionRef.current = null;
+      }, 1500);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        return;
+      }
+      console.error('Audio fetch stream error, fallback native download:', err);
+      triggerNativeBrowserDownload(session.url, session.filename);
+      addHistoryRecord(session.media, session.pathData.fullPath, 'audio', 'audio');
+      setAudioProgress(null);
+      setIsDownloading(false);
+      audioSessionRef.current = null;
+    }
+  };
+
+  const handleTogglePauseAudio = () => {
+    if (!audioSessionRef.current) return;
+    if (audioProgress?.isPaused) {
+      setAudioProgress((prev) => (prev ? { ...prev, isPaused: false } : null));
+      startOrResumeAudioFetch();
+    } else {
+      if (audioSessionRef.current.abortController) {
+        audioSessionRef.current.abortController.abort();
+      }
+      setAudioProgress((prev) => (prev ? { ...prev, isPaused: true } : null));
+    }
+  };
+
+  const handleCancelAudioDownload = () => {
+    if (audioSessionRef.current?.abortController) {
+      audioSessionRef.current.abortController.abort();
+    }
+    audioSessionRef.current = null;
+    setAudioProgress(null);
+    setIsDownloading(false);
+    setDownloadProgressText('Đã hủy tải');
+    setTimeout(() => setDownloadProgressText(''), 2000);
+  };
 
   const handlePauseDownload = () => {
     if (downloadSessionRef.current) {
@@ -288,70 +432,82 @@ export default function App() {
           addHistoryRecord(media, pathData.fullPath, type, 'video');
         }
       } else if (type === 'audio') {
-        const audioUrl = media.audio?.url || (media.mediaType === 'photos' ? media.video?.noWatermark : '');
-        if (!audioUrl) {
-          throw new Error('Không tìm thấy đường dẫn âm thanh MP3 của bài viết này.');
-        }
-
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
-        const audioParams = new URLSearchParams({
-          url: audioUrl,
-          postUrl: media.url,
-          mediaType: 'audio',
-          filename: pathData.filename,
-        });
-        const downloadUrl = `/api/tiktok/download?${audioParams.toString()}`;
 
-        setDownloadProgressText(t('loadingAudio'));
-        let blob: Blob | null = null;
+        const rawAudioUrl = media.audio?.url;
+        const videoUrl = media.video.hd || media.video.noWatermark;
 
-        if (audioUrl && !audioUrl.startsWith('/api/')) {
-          try {
-            blob = await streamFetchBlob(audioUrl, (p) => setDownloadProgressText(p), 20000, undefined, session);
-          } catch (cdnErr: any) {
-            if (session.isCancelled || cdnErr?.name === 'AbortError') throw cdnErr;
-          }
-        }
+        let downloadUrl = '';
+        // Kiểm tra xem link audio có phải là link stream nhạc độc lập hợp lệ hay không
+        const hasValidAudioStream =
+          rawAudioUrl &&
+          rawAudioUrl.startsWith('http') &&
+          rawAudioUrl !== videoUrl &&
+          !rawAudioUrl.includes('.mp4');
 
-        if (!blob) {
-          try {
-            blob = await streamFetchBlob(
-              '/api/tiktok/download',
-              (progressText) => setDownloadProgressText(progressText),
-              30000,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  url: audioUrl,
-                  postUrl: media.url,
-                  mediaType: 'audio',
-                  filename: pathData.filename,
-                }),
-              },
-              session
-            );
-          } catch (err: any) {
-            if (session.isCancelled || err?.name === 'AbortError') throw err;
-            try {
-              blob = await streamFetchBlob(downloadUrl, (p) => setDownloadProgressText(p), 30000, undefined, session);
-            } catch (err2: any) {
-              if (session.isCancelled || err2?.name === 'AbortError') throw err2;
-            }
-          }
-        }
-
-        if (session.isCancelled) return;
-
-        if (blob) {
-          await downloadBlobSafely(blob, pathData.filename);
-          addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 3000);
+        if (hasValidAudioStream) {
+          // Luồng proxy trực tiếp từ CDN âm thanh Douyin/TikTok (0% CPU)
+          const downloadParams = new URLSearchParams({
+            url: rawAudioUrl,
+            filename: pathData.filename,
+            mediaType: 'audio',
+          });
+          downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
         } else {
+          // Bắt buộc trích xuất âm thanh qua FFmpeg với cờ -vn để đảm bảo 100% là MP3 (không lẫn hình MP4)
+          const source = videoUrl || rawAudioUrl;
+          downloadUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(pathData.filename)}`;
+        }
+
+        // =========================================================================
+        // 1. DÀNH CHO iOS (IPHONE/IPAD): DÙNG LUỒNG NATIVE TRÌNH DUYỆT HOÀN TOÀN
+        // Khắc phục triệt để lỗi "Không thể thực hiện tác vụ" khi thoát màn hình.
+        // =========================================================================
+        if (isIOSDevice()) {
+          setDownloadProgressText(t('loadingAudio') || 'Đang kết nối tải audio...');
           triggerNativeBrowserDownload(downloadUrl, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
+
+          // Tắt loading sau 1.2s, bàn giao hoàn toàn cho Download Manager của iOS
+          setTimeout(() => {
+            setDownloadProgressText('');
+            setIsDownloading(false);
+          }, 1200);
+          return;
         }
+
+        // =========================================================================
+        // 2. DÀNH CHO ANDROID & DESKTOP: GIỮ NGUYÊN STREAM FETCH VÀ THANH TIẾN TRÌNH %
+        // =========================================================================
+        const durationSec = Number(media.duration || 0);
+        const estimatedTotalBytes = durationSec > 0 ? durationSec * 16000 : 0;
+
+        audioSessionRef.current = {
+          url: downloadUrl,
+          filename: pathData.filename,
+          media,
+          pathData,
+          receivedBytes: 0,
+          totalBytes: estimatedTotalBytes,
+          chunks: [],
+          abortController: null,
+        };
+
+        const totalMBText =
+          estimatedTotalBytes > 0
+            ? (estimatedTotalBytes / (1024 * 1024)).toFixed(1)
+            : '...';
+
+        setAudioProgress({
+          currentMB: '0.0',
+          totalMB: totalMBText,
+          percent: 0,
+          isPaused: false,
+          isIOS: false,
+        });
+
+        startOrResumeAudioFetch();
+        return;
       } else if (type === 'photos_zip') {
         const items = media.images.map((imgUrl, idx) => {
           const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: idx + 1 });
@@ -690,6 +846,9 @@ export default function App() {
                 directDownloadInfo={directDownloadInfo}
                 onDirectDownload={handleDirectDownload}
                 theme={theme}
+                audioProgress={audioProgress}
+                onTogglePauseAudio={handleTogglePauseAudio}
+                onCancelAudioDownload={handleCancelAudioDownload}
               />
             ) : null}
           </div>

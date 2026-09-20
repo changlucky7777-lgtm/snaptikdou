@@ -256,14 +256,19 @@ export function triggerBlobDownload(blob: Blob, filename: string) {
   }, 3600000);
 }
 
+export function isIOSDevice(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+  );
+}
+
 // Trigger native browser download directly via an anchor element
 // Hands the media stream directly to the OS / Browser Download Manager
 export function triggerNativeBrowserDownload(url: string, filename: string = 'media.mp4') {
   const isInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
-  const isIOS =
-    typeof window !== 'undefined' &&
-    (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+  const isIOS = isIOSDevice();
 
   // TRÊN iOS (Safari / Chrome iOS):
   // Dùng target="_blank" để Safari bàn giao file sang Download Manager của hệ điều hành,
