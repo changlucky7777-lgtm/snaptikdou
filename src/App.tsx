@@ -474,24 +474,36 @@ export default function App() {
         setTimeout(() => setDownloadProgressText(''), 2000);
         return;
       }
-
       console.error('Download single error:', err);
-      const fallbackUrl =
-        type === 'video_hd'
-          ? media.video.hd || media.video.noWatermark
-          : type === 'video_sd'
-          ? media.video.noWatermark || media.video.hd
-          : type === 'audio'
-          ? media.audio?.url
-          : undefined;
 
-      const directUrl = fallbackUrl || media.video.hd || media.video.noWatermark || media.url;
       const cleanTitle =
-        (media.title || 'video')
+        (media.title || 'media')
           .replace(/[^\w\s\u4e00-\u9fa5\u00C0-\u1EF9_-]/gi, '')
           .trim()
           .slice(0, 40) || media.id || 'download';
+
+      let directUrl = '';
       const ext = type === 'audio' ? 'mp3' : 'mp4';
+
+      if (type === 'audio') {
+        const rawAudioUrl = media.audio?.url;
+        const videoUrl = media.video.hd || media.video.noWatermark;
+
+        // Nếu có link audio độc lập từ CDN Douyin/TikTok
+        if (rawAudioUrl && rawAudioUrl.startsWith('http') && rawAudioUrl !== videoUrl && !rawAudioUrl.includes('.mp4')) {
+          directUrl = rawAudioUrl;
+        } else {
+          // Bắt buộc trích xuất luồng audio MP3 qua backend, không lấy link video thô
+          const source = videoUrl || rawAudioUrl || media.url;
+          directUrl = `${window.location.origin}/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(cleanTitle + '.mp3')}`;
+        }
+      } else {
+        const fallbackUrl =
+          type === 'video_hd'
+            ? media.video.hd || media.video.noWatermark
+            : media.video.noWatermark || media.video.hd;
+        directUrl = fallbackUrl || media.video.hd || media.video.noWatermark || media.url;
+      }
 
       setDirectDownloadInfo({
         url: directUrl,
