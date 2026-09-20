@@ -1467,6 +1467,7 @@ app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
     'Content-Disposition',
     `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
   );
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Accept-Ranges', 'none');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Cache-Control', 'no-cache, no-transform');

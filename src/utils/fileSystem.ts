@@ -257,31 +257,46 @@ export function triggerBlobDownload(blob: Blob, filename: string) {
 }
 
 // Trigger native browser download directly via an anchor element
-// Hands the media stream directly to the OS / Browser Download Manager (Android notification bar / Safari downloads)
-// Enables background downloading that continues even when the user switches to Zalo or turns off the screen.
+// Hands the media stream directly to the OS / Browser Download Manager
 export function triggerNativeBrowserDownload(url: string, filename: string = 'media.mp4') {
   const isInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const isIOS =
+    typeof window !== 'undefined' &&
+    (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+  // TRÊN iOS (Safari / Chrome iOS):
+  // Dùng target="_blank" để Safari bàn giao file sang Download Manager của hệ điều hành,
+  // cho phép tải ngầm trong ứng dụng Tệp (Files) khi khóa màn hình hoặc chuyển app.
+  if (isIOS) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
+    }, 2000);
+    return;
+  }
+
+  // TRÊN DESKTOP & ANDROID:
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
 
-  // Determine whether this is a same-origin / internal endpoint
   const isSameOrigin =
     url.startsWith('/') ||
     (typeof window !== 'undefined' && url.startsWith(window.location.origin));
 
   if (isInsideIframe && !isSameOrigin) {
-    // Cross-origin external CDN link can open in new tab safely
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
   } else {
-    // CRITICAL FIX: For same-origin endpoints (/api/tiktok/download?...),
-    // NEVER use target="_blank" with noopener noreferrer inside an iframe!
-    // In cloud environments (Google AI Studio / Cloud Run), opening a same-origin URL
-    // in a new tab without session cookies causes a 302 Cookie Check redirect.
-    // Chrome's download manager then fails with "Site wasn't available" and writes a 0-byte file!
-    // Without target="_blank", the browser sends the request within the authenticated session,
-    // receives Content-Disposition: attachment, and downloads the file reliably.
     a.target = '_self';
   }
 
