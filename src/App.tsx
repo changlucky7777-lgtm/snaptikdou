@@ -489,20 +489,27 @@ export default function App() {
         const rawAudioUrl = media.audio?.url;
         const videoUrl = media.video.hd || media.video.noWatermark;
 
-        // Nếu có link audio độc lập từ CDN Douyin/TikTok
-        if (rawAudioUrl && rawAudioUrl.startsWith('http') && rawAudioUrl !== videoUrl && !rawAudioUrl.includes('.mp4')) {
-          directUrl = rawAudioUrl;
+        // Nếu có link audio độc lập và không phải đuôi mp4
+        if (
+          rawAudioUrl &&
+          rawAudioUrl.startsWith('http') &&
+          rawAudioUrl !== videoUrl &&
+          !rawAudioUrl.includes('.mp4')
+        ) {
+          // Tải proxy link audio gốc (nhẹ nhất, không qua convert)
+          directUrl = `/api/tiktok/download?url=${encodeURIComponent(rawAudioUrl)}&filename=${encodeURIComponent(cleanTitle + '.mp3')}&mediaType=audio`;
         } else {
-          // Bắt buộc trích xuất luồng audio MP3 qua backend, không lấy link video thô
+          // Tách âm thanh từ video qua ffmpeg
           const source = videoUrl || rawAudioUrl || media.url;
-          directUrl = `${window.location.origin}/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(cleanTitle + '.mp3')}`;
+          directUrl = `/api/tiktok/stream-audio?url=${encodeURIComponent(source)}&filename=${encodeURIComponent(cleanTitle + '.mp3')}`;
         }
       } else {
         const fallbackUrl =
           type === 'video_hd'
             ? media.video.hd || media.video.noWatermark
             : media.video.noWatermark || media.video.hd;
-        directUrl = fallbackUrl || media.video.hd || media.video.noWatermark || media.url;
+        const initialUrl = fallbackUrl || media.video.hd || media.video.noWatermark;
+        directUrl = `/api/tiktok/download?url=${encodeURIComponent(initialUrl)}&filename=${encodeURIComponent(cleanTitle + '.mp4')}&mediaType=video`;
       }
 
       setDirectDownloadInfo({
@@ -518,34 +525,34 @@ export default function App() {
 
   const handleDirectDownload = async () => {
     if (!directDownloadInfo?.url) return;
-    const session = createDownloadSession();
-    downloadSessionRef.current = session;
+
     try {
       setIsDownloading(true);
-      setIsPaused(false);
       setDownloadProgressText('Đang tải tốc độ cao...');
-      const blob = await streamFetchBlob(directDownloadInfo.url, (p) => setDownloadProgressText(p), 45000, undefined, session);
-      if (session.isCancelled) return;
-      await downloadBlobSafely(blob, directDownloadInfo.filename);
+
+      // Kích hoạt luồng tải tệp trực tiếp của trình duyệt (Native Download)
+      // Giúp file được tải trực tiếp về máy mà không bị giới hạn bộ nhớ RAM hay rỗng file
+      triggerNativeBrowserDownload(directDownloadInfo.url, directDownloadInfo.filename);
+
       if (currentMedia) {
-        addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
+        const isAudio = directDownloadInfo.filename.endsWith('.mp3');
+        addHistoryRecord(
+          currentMedia,
+          directDownloadInfo.filename,
+          isAudio ? 'audio' : 'video_hd',
+          isAudio ? 'audio' : 'video'
+        );
       }
+
       setDownloadProgressText(t('downloadCompleted'));
     } catch (err: any) {
-      if (err?.name === 'AbortError' || session.isCancelled) {
-        setDownloadProgressText('Đã hủy');
-        setTimeout(() => setDownloadProgressText(''), 2000);
-        return;
-      }
+      console.error('Direct download error:', err);
       triggerNativeBrowserDownload(directDownloadInfo.url, directDownloadInfo.filename);
-      if (currentMedia) {
-        addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
-      }
     } finally {
-      setIsDownloading(false);
-      setIsPaused(false);
-      downloadSessionRef.current = null;
-      setTimeout(() => setDownloadProgressText(''), 2500);
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadProgressText('');
+      }, 1500);
     }
   };
 
