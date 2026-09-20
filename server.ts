@@ -1533,18 +1533,22 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
         u.includes('amemv.com') ||
         u.includes('pstatp.com'));
 
-    // 1. XỬ LÝ RIÊNG CHO FILE ÂM THANH MP3
+    // =========================================================================
+    // PHÂN LUỒNG THÔNG MINH CHO AUDIO / MP3
+    // =========================================================================
     if (isMp3Request) {
-      // Ưu tiên 1: Link audio gốc từ nhạc nền (Cực kỳ quan trọng cho ALBUM ẢNH SLIDE)
       const directAudioUrl = rawUrl || fallbackUrl;
 
+      // NHÁNH 1: ĐÃ CÓ LINK ÂM THANH TRỰC TIẾP (Link nhạc của Slide ảnh hoặc audio CDN)
+      // Không chạy qua FFmpeg, stream trực tiếp qua fetchMediaWithRetry
       if (directAudioUrl) {
-        const isDouyin = checkIsDouyin(directAudioUrl) || checkIsDouyin(postUrl);
-        const audioRes = await fetchMediaWithRetry(directAudioUrl, { isDouyin });
+        const isDouyinAudio = checkIsDouyin(directAudioUrl) || checkIsDouyin(postUrl);
+        const audioResponse = await fetchMediaWithRetry(directAudioUrl, { isDouyin: isDouyinAudio });
 
-        if (isValidMediaResponse(audioRes) && audioRes?.body) {
-          // File nhạc nền gốc của TikTok/Douyin: Stream thẳng trực tiếp về máy khách, KHÔNG qua FFmpeg
-          const safeFilename = requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim();
+        if (isValidMediaResponse(audioResponse) && audioResponse?.body) {
+          const safeFilename =
+            requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() ||
+            'audio.mp3';
           const encodedFilename = encodeURIComponent(requestedFilename);
 
           res.setHeader('Content-Type', 'audio/mpeg');
@@ -1553,22 +1557,31 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
             `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
           );
           res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Accept-Ranges', 'bytes');
 
-          const streamToPipe = typeof (audioRes.body as any)?.getReader === 'function'
-            ? Readable.fromWeb(audioRes.body as any)
-            : audioRes.body;
+          const upstreamLength = audioResponse.headers.get('content-length');
+          if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
+
+          const streamToPipe =
+            typeof (audioResponse.body as any)?.getReader === 'function'
+              ? Readable.fromWeb(audioResponse.body as any)
+              : audioResponse.body;
 
           await pipeline(streamToPipe as any, res);
           return;
         }
       }
 
-      // Ưu tiên 2: Nếu không có link nhạc riêng (Video nói chuyện dài, podcast...), mới dùng FFmpeg tách từ video
+      // NHÁNH 2: KHÔNG CÓ LINK AUDIO RIÊNG (Video dài, video không nhạc, chỉ có videoFallback)
+      // Kích hoạt FFmpeg tách luồng từ video
       if (videoFallback) {
         return transcodeVideoToMp3Stream(videoFallback, res, requestedFilename);
       }
     }
 
+    // =========================================================================
+    // CÁC LUỒNG TẢI VIDEO MP4 & ẢNH GIỮ NGUYÊN NHƯ CŨ
+    // =========================================================================
     const isDouyin = checkIsDouyin(rawUrl || '') || checkIsDouyin(postUrl || '');
 
     const requestedRange = req.headers.range as string | undefined;
