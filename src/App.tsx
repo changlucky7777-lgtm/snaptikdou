@@ -556,11 +556,13 @@ export default function App() {
     }
   };
 
-  // Nhận diện iOS
+  // Nhận diện chính xác thiết bị iOS (iPhone, iPad, iPod)
   const isIOSDevice = () => {
     if (typeof window === 'undefined') return false;
-    return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    return (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
   };
 
   const handleDownloadSingle = async (
@@ -568,18 +570,19 @@ export default function App() {
     type: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'photo_single',
     photoIndex?: number
   ) => {
-    // 1. Nếu là Desktop: Tải trực tiếp, không hiện modal xác nhận
+    // 1. TRÊN DESKTOP: Bắt đầu tải ngay lập tức, không hiện modal
     if (!isMobileDevice()) {
       return executeDownloadDirect(media, type, photoIndex);
     }
 
-    // 2. Nếu là iOS và tải MP3 (chạy luồng fetch blob):
-    // Bỏ qua modal React (Hình 2), vì khi tải xong Safari iOS sẽ tự bật modal Native (Hình 3)
-    if (isIOSDevice() && type === 'audio') {
+    // 2. TRÊN IOS (IPHONE/IPAD): TẢI THẲNG LUÔN CHO TẤT CẢ CÁC ĐỊNH DẠNG
+    // Cắt bỏ hoàn toàn modal React tự tạo (PendingDownload) trên iOS
+    // Safari iOS sẽ tự động kích hoạt duy nhất hộp thoại xác nhận gốc của hệ thống!
+    if (isIOSDevice()) {
       return executeDownloadDirect(media, type, photoIndex);
     }
 
-    // 3. Với các trường hợp còn lại trên điện thoại (Android, hoặc MP4 trên iOS): Hiện modal xác nhận (Hình 2)
+    // 3. TRÊN ANDROID: Giữ modal xác nhận giao diện để người dùng kiểm tra tên file
     let filename = 'media.mp4';
     let previewUrl = '';
 
