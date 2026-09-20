@@ -3,7 +3,6 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import zlib from 'zlib';
 import { Readable } from 'stream';
-import { spawn } from 'child_process';
 import { pipeline } from 'stream/promises';
 import { createServer as createViteServer } from 'vite';
 import JSZip from 'jszip';
@@ -1433,84 +1432,6 @@ async function fetchMediaWithRetry(
   return null;
 }
 
-// ============================================================================
-// 1. ENDPOINT TÁCH ÂM THANH MP3 CHUẨN QUA FFMPEG STREAMING PIPE
-// ============================================================================
-app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
-  const rawUrl = String(req.query.url || '').trim();
-  const requestedFilename = String(req.query.filename || 'audio.mp3').trim();
-
-  if (!rawUrl) {
-    res.status(400).send('Thiếu URL âm thanh');
-    return;
-  }
-
-  req.socket.setTimeout(0);
-  res.setTimeout(0);
-
-  // Đổi đuôi an toàn sang .mp3 hoặc giữ nguyên tên
-  const baseName = requestedFilename.replace(/\.[^/.]+$/, '');
-  const safeFilename = `${baseName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio'}.mp3`;
-  const encodedFilename = encodeURIComponent(safeFilename);
-
-  const isDouyin =
-    rawUrl.includes('douyin.com') ||
-    rawUrl.includes('iesdouyin.com') ||
-    rawUrl.includes('zjcdn.com') ||
-    rawUrl.includes('douyinvod.com') ||
-    rawUrl.includes('snssdk.com');
-
-  const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
-  const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
-
-  res.setHeader('Content-Type', 'audio/mpeg');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
-  );
-  res.setHeader('Accept-Ranges', 'none');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-
-  // Cấu hình FFmpeg loại bỏ xử lý video hoàn toàn và ghìm CPU ở mức thấp nhất
-  const ffmpegArgs = [
-    '-threads', '1',
-    '-reconnect', '1',
-    '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '5',
-    '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
-    '-vn',                    // Khai báo bỏ video trước để không tốn CPU parse video track
-    '-i', rawUrl,
-    '-vn',
-    '-c:a', 'libmp3lame',
-    '-b:a', '128k',
-    '-threads', '1',          // Khóa cứng 1 nhân CPU
-    '-preset', 'ultrafast',
-    '-f', 'mp3',
-    'pipe:1'
-  ];
-
-  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
-    // Chạy ở độ ưu tiên thấp (nice) để không tranh chấp tài nguyên hệ thống
-  });
-
-  ffmpegProcess.stdout.pipe(res);
-  ffmpegProcess.stderr.on('data', () => {});
-
-  ffmpegProcess.on('error', (err) => {
-    console.error('FFmpeg error:', err);
-    if (!res.writableEnded) res.end();
-  });
-
-  ffmpegProcess.stdout.on('end', () => {
-    if (!res.writableEnded) res.end();
-  });
-
-  req.on('close', () => {
-    ffmpegProcess.kill('SIGKILL');
-  });
-});
-
 app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
   const filename = String(req.query.filename || 'media.mp4').trim();
@@ -1523,10 +1444,6 @@ app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
 });
 
 app.all('/api/tiktok/download', async (req: Request, res: Response) => {
-  // Thêm thiết lập timeout ngay đầu route /api/tiktok/download
-  req.socket.setTimeout(0);
-  res.setTimeout(0);
-
   try {
     const rawUrl = ((req.query.url || req.body?.url) as string) || '';
     const fallbackUrl = ((req.query.fallbackUrl || req.body?.fallbackUrl) as string) || '';
@@ -1659,7 +1576,6 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
 
         const isRangeRequest = Boolean(req.headers.range);
         res.setHeader('Accept-Ranges', 'bytes');
-        res.setHeader('Connection', 'keep-alive');
         if (isRangeRequest && mediaResponse.status === 206) {
           res.status(206);
           const cr = mediaResponse.headers.get('content-range');

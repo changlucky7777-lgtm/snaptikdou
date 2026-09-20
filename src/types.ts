@@ -72,11 +72,3 @@ export interface HistoryRecord {
   sourceUrl: string;
   downloadType: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'one_click_all' | 'photo_single';
 }
-
-export interface AudioProgressState {
-  currentMB: string;
-  totalMB: string;
-  percent: number;
-  isPaused: boolean;
-  isIOS?: boolean;
-}
