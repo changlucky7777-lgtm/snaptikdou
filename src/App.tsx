@@ -545,17 +545,30 @@ export default function App() {
     }
   };
 
+  // Nhận diện iOS
+  const isIOSDevice = () => {
+    if (typeof window === 'undefined') return false;
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  };
+
   const handleDownloadSingle = async (
     media: TikTokMediaItem,
     type: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'photo_single',
     photoIndex?: number
   ) => {
-    // 1. Nếu là Desktop: Bắt link tải ngay lập tức, KHÔNG hiện popup
+    // 1. Nếu là Desktop: Tải trực tiếp, không hiện modal xác nhận
     if (!isMobileDevice()) {
       return executeDownloadDirect(media, type, photoIndex);
     }
 
-    // 2. Nếu là Mobile (Android/iOS): Hiển thị Modal xác nhận kiểu Safari
+    // 2. Nếu là iOS và tải MP3 (chạy luồng fetch blob):
+    // Bỏ qua modal React (Hình 2), vì khi tải xong Safari iOS sẽ tự bật modal Native (Hình 3)
+    if (isIOSDevice() && type === 'audio') {
+      return executeDownloadDirect(media, type, photoIndex);
+    }
+
+    // 3. Với các trường hợp còn lại trên điện thoại (Android, hoặc MP4 trên iOS): Hiện modal xác nhận (Hình 2)
     let filename = 'media.mp4';
     let previewUrl = '';
 
