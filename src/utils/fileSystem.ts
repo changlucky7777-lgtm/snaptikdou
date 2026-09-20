@@ -578,17 +578,17 @@ export async function streamFetchBlob(
         const totalMB = (totalExpectedLength / (1024 * 1024)).toFixed(1);
         onProgress(
           i18n.t(progressKey, {
+            percent: 0,
             loaded: '0.0 MB',
             total: `${totalMB} MB`,
-            percent: 0,
           })
         );
       } else {
         onProgress(
           i18n.t(progressKey, {
+            percent: 0,
             loaded: '0.0 MB',
             total: '... MB',
-            percent: 0,
           })
         );
       }
@@ -619,17 +619,17 @@ export async function streamFetchBlob(
               const percent = Math.min(100, Math.round((received / totalExpectedLength) * 100));
               onProgress(
                 i18n.t(progressKey, {
+                  percent,
                   loaded: `${receivedMB} MB`,
                   total: `${totalMB} MB`,
-                  percent,
                 })
               );
             } else {
               onProgress(
                 i18n.t(progressKey, {
+                  percent: 0,
                   loaded: `${receivedMB} MB`,
                   total: '... MB',
-                  percent: 0,
                 })
               );
             }
