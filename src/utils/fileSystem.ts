@@ -7,6 +7,14 @@ export interface DirectorySaveResult {
   directoryName: string;
 }
 
+export function isIOSDevice(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
 export function isFileSystemAccessSupported(): boolean {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
@@ -561,12 +569,15 @@ export async function streamFetchBlob(
     const reader = res.body.getReader();
     let streamInterruptedByPause = false;
 
+    // Chọn key tương ứng: iOS dùng downloadingProgressIOS, Desktop/Android dùng downloadingProgress
+    const progressKey = isIOSDevice() ? 'downloadingProgressIOS' : 'downloadingProgress';
+
     // Emit initial progress if this is the start
     if (onProgress && received === 0) {
       if (totalExpectedLength > 0) {
         const totalMB = (totalExpectedLength / (1024 * 1024)).toFixed(1);
         onProgress(
-          i18n.t('downloadingProgress', {
+          i18n.t(progressKey, {
             loaded: '0.0 MB',
             total: `${totalMB} MB`,
             percent: 0,
@@ -574,7 +585,7 @@ export async function streamFetchBlob(
         );
       } else {
         onProgress(
-          i18n.t('downloadingProgress', {
+          i18n.t(progressKey, {
             loaded: '0.0 MB',
             total: '... MB',
             percent: 0,
@@ -607,7 +618,7 @@ export async function streamFetchBlob(
               const totalMB = (totalExpectedLength / (1024 * 1024)).toFixed(1);
               const percent = Math.min(100, Math.round((received / totalExpectedLength) * 100));
               onProgress(
-                i18n.t('downloadingProgress', {
+                i18n.t(progressKey, {
                   loaded: `${receivedMB} MB`,
                   total: `${totalMB} MB`,
                   percent,
@@ -615,7 +626,7 @@ export async function streamFetchBlob(
               );
             } else {
               onProgress(
-                i18n.t('downloadingProgress', {
+                i18n.t(progressKey, {
                   loaded: `${receivedMB} MB`,
                   total: '... MB',
                   percent: 0,
