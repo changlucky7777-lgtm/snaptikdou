@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
-import { spawn } from 'child_process';
 import path from 'path';
 import zlib from 'zlib';
 import { Readable } from 'stream';
@@ -1432,82 +1431,6 @@ async function fetchMediaWithRetry(
   }
   return null;
 }
-
-// ============================================================================
-// ENDPOINT TÁCH ÂM THANH MP3 STREAMING QUA FFMPEG (TIẾT KIỆM CPU)
-// ============================================================================
-app.get('/api/tiktok/stream-audio', async (req: Request, res: Response) => {
-  const rawUrl = String(req.query.url || '').trim();
-  const requestedFilename = String(req.query.filename || 'audio.mp3').trim();
-
-  if (!rawUrl) {
-    res.status(400).send('Thiếu URL âm thanh');
-    return;
-  }
-
-  req.socket.setTimeout(0);
-  res.setTimeout(0);
-
-  const baseName = requestedFilename.replace(/\.[^/.]+$/, '');
-  const safeFilename = `${baseName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio'}.mp3`;
-  const encodedFilename = encodeURIComponent(safeFilename);
-
-  const isDouyin =
-    rawUrl.includes('douyin.com') ||
-    rawUrl.includes('iesdouyin.com') ||
-    rawUrl.includes('zjcdn.com') ||
-    rawUrl.includes('douyinvod.com') ||
-    rawUrl.includes('snssdk.com');
-
-  const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
-  const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
-
-  res.setHeader('Content-Type', 'audio/mpeg');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
-  );
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Accept-Ranges', 'none');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-
-  // Khóa cứng 1 luồng xử lý và preset ultrafast để CPU chạy êm ái
-  const ffmpegArgs = [
-    '-threads', '1',
-    '-reconnect', '1',
-    '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '5',
-    '-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`,
-    '-vn',
-    '-i', rawUrl,
-    '-vn',
-    '-c:a', 'libmp3lame',
-    '-b:a', '128k',
-    '-threads', '1',
-    '-preset', 'ultrafast',
-    '-f', 'mp3',
-    'pipe:1'
-  ];
-
-  const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
-
-  ffmpegProcess.stdout.pipe(res);
-  ffmpegProcess.stderr.on('data', () => {});
-
-  ffmpegProcess.on('error', (err) => {
-    console.error('FFmpeg error:', err);
-    if (!res.writableEnded) res.end();
-  });
-
-  ffmpegProcess.stdout.on('end', () => {
-    if (!res.writableEnded) res.end();
-  });
-
-  req.on('close', () => {
-    ffmpegProcess.kill('SIGKILL');
-  });
-});
 
 app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
   const rawUrl = String(req.query.url || '').trim();
