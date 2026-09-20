@@ -530,17 +530,17 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   </div>
                 )}
 
-                {/* Vị trí số 4: Nút Tải xuống tốc độ cao (chỉ xuất hiện sau khi quá trình tải thông thường không tải được) */}
+                {/* Vị trí 4: Nút Tải xuống tốc độ cao */}
                 {directDownloadInfo && !isDownloading && (
                   <button
                     id="btn-direct-download-pos4"
                     type="button"
                     onClick={onDirectDownload}
                     className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 border border-emerald-400/40 shadow-md transition-all duration-200 animate-in fade-in slide-in-from-right-3 cursor-pointer"
-                    title="Tải xuống tốc độ cao"
+                    title={t('btnDirectDownload')}
                   >
                     <Rocket className="w-3.5 h-3.5" />
-                    <span>Tải xuống tốc độ cao</span>
+                    <span>{t('btnDirectDownload')}</span>
                   </button>
                 )}
               </div>
@@ -760,7 +760,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             </a>
           </div>
 
-          {/* Hướng dẫn tải về khi nút Tải xuống tốc độ cao xuất hiện */}
+          {/* Hướng dẫn khi nút Tải xuống tốc độ cao xuất hiện */}
           {directDownloadInfo && !isDownloading && (
             <div
               id="direct-download-guide-box"
@@ -776,10 +776,10 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                     isLight ? 'text-emerald-800' : 'text-emerald-400'
                   }`}
                 >
-                  <span>💡 Hướng dẫn Tải xuống tốc độ cao:</span>
+                  <span>{t('directDownloadGuideTitle')}</span>
                 </div>
                 <div className={`text-xs sm:text-[13px] leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                  Nhấn vào <strong className={`${isLight ? 'text-emerald-700' : 'text-emerald-300'} font-semibold`}>Tải xuống tốc độ cao</strong> <span className={`${isLight ? 'text-emerald-600' : 'text-emerald-400'} font-bold mx-1`}>=&gt;</span> Nhấn vào ô có <strong className={`${isLight ? 'text-slate-900' : 'text-white'} font-semibold`}>dấu 3 chấm</strong> ở tab Trình chiếu (Media Player) <span className={`${isLight ? 'text-emerald-600' : 'text-emerald-400'} font-bold mx-1`}>=&gt;</span> <strong className={`${isLight ? 'text-emerald-700' : 'text-emerald-300'} font-semibold`}>Download (Tải xuống)</strong>
+                  {t('directDownloadGuideDesc')}
                 </div>
               </div>
             </div>
