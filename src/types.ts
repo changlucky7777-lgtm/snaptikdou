@@ -78,4 +78,5 @@ export interface AudioProgressState {
   totalMB: string;
   percent: number;
   isPaused: boolean;
+  isCompleted?: boolean;
 }

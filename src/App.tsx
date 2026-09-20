@@ -62,6 +62,15 @@ const streamFetchBlob = async (
   return new Blob(chunks, { type: mimeType });
 };
 
+// Nhận diện chính xác thiết bị iOS (iPhone, iPad, iPod)
+export const isIOSDevice = () => {
+  if (typeof window === 'undefined') return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+};
+
 export default function App() {
   const { t, i18n } = useTranslation();
   const [lang, setLang] = useState<SupportedLang>(() => getInitialLanguage());
@@ -207,29 +216,32 @@ export default function App() {
         }
       }
 
-      // ĐỔI THÔNG ĐIỆP HƯỚNG DẪN KHI DỮ LIỆU ĐÃ GOM ĐỦ TRONG RAM
+      // =========================================================================
+      // KHI DỮ LIỆU ĐÃ TẢI XONG 100% TRONG BỘ NHỚ RAM
+      // =========================================================================
+      const isIOS = isIOSDevice();
+
       setAudioProgress((prev) =>
         prev
           ? {
               ...prev,
               percent: 100,
               currentMB: prev.totalMB !== '...' ? prev.totalMB : prev.currentMB,
+              isCompleted: true, // Đánh dấu đã hoàn thành 100%
             }
           : null
       );
 
       const finalBlob = new Blob(session.chunks, { type: 'audio/mpeg' });
 
-      // Gọi lệnh lưu file (Safari iOS sẽ mở hộp thoại xác nhận lưu)
+      // Kích hoạt lưu file (trên iOS Safari sẽ kích hoạt popup hệ thống)
       await downloadBlobSafely(finalBlob, session.filename);
       addHistoryRecord(session.media, session.pathData.fullPath, 'audio', 'audio');
 
-      // Tự động đóng thanh tiến trình sau khi kích hoạt lưu file
-      setTimeout(() => {
-        setAudioProgress(null);
-        audioSessionRef.current = null;
-        setIsDownloading(false);
-      }, 1500);
+      // GIỮ NGUYÊN THÔNG BÁO TRÊN GIAO DIỆN, KHÔNG TỰ ĐỘNG ẨN BẰNG SETTIMEOUT!
+      // Chỉ dọn dẹp các biến kết nối và socket nền
+      audioSessionRef.current = null;
+      setIsDownloading(false);
 
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -554,15 +566,6 @@ export default function App() {
         downloadSessionRef.current = null;
       }
     }
-  };
-
-  // Nhận diện chính xác thiết bị iOS (iPhone, iPad, iPod)
-  const isIOSDevice = () => {
-    if (typeof window === 'undefined') return false;
-    return (
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-    );
   };
 
   const handleDownloadSingle = async (
