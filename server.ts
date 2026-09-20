@@ -1444,43 +1444,50 @@ app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
   res.redirect(302, downloadUrl);
 });
 
-function transcodeVideoToMp3Stream(inputStream: Readable, res: Response, filename: string) {
-  const safeFilename =
-    filename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.mp3';
-  const encodedFilename = encodeURIComponent(filename);
+function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string) {
+  // Đổi đuôi sang .m4a để đúng chuẩn container AAC gốc của TikTok/Douyin
+  const baseName = filename.replace(/\.(mp3|mp4|m4a)$/i, '');
+  const finalFilename = `${baseName || 'audio'}.m4a`;
+  const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.m4a';
+  const encodedFilename = encodeURIComponent(finalFilename);
 
-  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Content-Type', 'audio/mp4');
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
   );
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
-  const command = ffmpeg(inputStream)
+  // Đưa thẳng URL video vào FFmpeg, dùng lệnh copy luồng âm thanh (-c:a copy)
+  // Không giải mã, không tốn CPU, stream trực tiếp về client
+  const command = ffmpeg(videoUrl)
     .noVideo()
-    .audioCodec('libmp3lame')
-    .audioBitrate(192)
-    .format('mp3')
+    .audioCodec('copy')               // STREAM COPY: Tốc độ ánh sáng, 0% CPU
+    .format('mp4')                    // Container chuẩn cho luồng AAC
     .outputOptions([
-      '-id3v2_version 3',
-      '-write_xing 0',
+      '-movflags frag_keyframe+empty_moov', // Cần thiết để pipe luồng mp4/m4a trực tiếp ra HTTP
     ]);
 
+  if (typeof videoUrl === 'string' && videoUrl.startsWith('http')) {
+    command.inputOptions([
+      '-user_agent',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    ]);
+  }
+
   command.on('error', (err) => {
-    if (err.message && !err.message.includes('Output stream closed')) {
-      console.warn('[FFmpeg Stream Error]:', err.message);
+    if (!err.message.includes('Output stream closed')) {
+      console.warn('[Audio Copy Error]:', err.message);
     }
     if (!res.headersSent) {
-      res.status(500).json({ success: false, message: 'Lỗi khi trích xuất âm thanh MP3' });
+      res.status(500).json({ success: false, message: 'Lỗi trích xuất audio' });
     } else if (!res.writableEnded) {
       res.end();
     }
   });
 
   res.on('close', () => {
-    try {
-      command.kill('SIGKILL');
-    } catch {}
+    try { command.kill('SIGKILL'); } catch {}
   });
 
   command.pipe(res, { end: true });
@@ -1493,7 +1500,11 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
     const postUrl = ((req.query.postUrl || req.body?.postUrl) as string) || '';
     const videoFallback = ((req.query.videoFallback || req.body?.videoFallback) as string) || '';
     const requestedFilename = ((req.query.filename || req.body?.filename) as string) || 'media.mp4';
-    const isMp3Request = requestedFilename.endsWith('.mp3');
+    const isMp3Request =
+      requestedFilename.endsWith('.mp3') ||
+      requestedFilename.endsWith('.m4a') ||
+      req.query.mediaType === 'audio' ||
+      req.body?.mediaType === 'audio';
     const backupUrls: string[] = Array.isArray(req.body?.backupUrls)
       ? req.body.backupUrls
       : typeof req.query.backupUrls === 'string'
@@ -1525,15 +1536,7 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
     if (isMp3Request) {
       const audioSource = rawUrl || fallbackUrl || videoFallback;
       if (audioSource) {
-        const isDouyinSource = checkIsDouyin(audioSource) || checkIsDouyin(postUrl);
-        const sourceResponse = await fetchMediaWithRetry(audioSource, { isDouyin: isDouyinSource });
-        if (isValidMediaResponse(sourceResponse) && sourceResponse?.body) {
-          const streamToPipe =
-            typeof (sourceResponse.body as any)?.getReader === 'function'
-              ? Readable.fromWeb(sourceResponse.body as any)
-              : (sourceResponse.body as any);
-          return transcodeVideoToMp3Stream(streamToPipe as Readable, res, requestedFilename);
-        }
+        return transcodeVideoToMp3Stream(audioSource, res, requestedFilename);
       }
     }
 
