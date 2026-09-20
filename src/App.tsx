@@ -90,7 +90,7 @@ export default function App() {
     }
     setIsDownloading(false);
     setIsPaused(false);
-    setDownloadProgressText('Đã hủy');
+    setDownloadProgressText('Đã hủy tải');
     setTimeout(() => {
       setDownloadProgressText('');
     }, 2000);
@@ -122,11 +122,13 @@ export default function App() {
     const queryUrl = targetUrl || url;
     const trimmedUrl = (queryUrl || '').trim();
 
+    // 1. Kiểm tra trường hợp chưa dán link (input rỗng)
     if (!trimmedUrl) {
       window.alert(t('alertEmptyLink'));
       return;
     }
 
+    // 2. Kiểm tra liên kết hợp lệ từ TikTok hoặc Douyin
     const isValidUrl = /(tiktok\.com|douyin\.com|iesdouyin\.com)/i.test(trimmedUrl);
     if (!isValidUrl) {
       window.alert(t('alertInvalidLink'));
@@ -197,6 +199,7 @@ export default function App() {
         if (!primaryUrl && !fallbackUrl) {
           throw new Error('Bài viết này không có video hợp lệ.');
         }
+
         const pathData = buildFilePath(media, pathConfig, {
           mediaType: 'video',
           resolution: type === 'video_hd' ? 'HD' : 'SD',
@@ -225,11 +228,12 @@ export default function App() {
         if (backupUrls && backupUrls.length > 0) {
           downloadParams.set('backupUrls', backupUrls.join(','));
         }
-
         const downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
-        setDownloadProgressText(t('loadingVideo'));
 
+        setDownloadProgressText(t('loadingVideo'));
         let blob: Blob | null = null;
+
+        // Thử tải trực tiếp từ CDN trước để tiết kiệm tài nguyên
         if (initialUrl && !initialUrl.startsWith('/api/')) {
           try {
             blob = await streamFetchBlob(initialUrl, (p) => setDownloadProgressText(p), 20000, undefined, session);
@@ -238,6 +242,7 @@ export default function App() {
           }
         }
 
+        // Nếu trực tiếp bị chặn thì chạy qua proxy stream của server
         if (!blob) {
           try {
             blob = await streamFetchBlob(
@@ -277,6 +282,7 @@ export default function App() {
         if (!audioUrl) {
           throw new Error('Không tìm thấy đường dẫn âm thanh MP3 của bài viết này.');
         }
+
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
         const audioParams = new URLSearchParams({
           url: audioUrl,
@@ -285,9 +291,10 @@ export default function App() {
           filename: pathData.filename,
         });
         const downloadUrl = `/api/tiktok/download?${audioParams.toString()}`;
-        setDownloadProgressText(t('loadingAudio'));
 
+        setDownloadProgressText(t('loadingAudio'));
         let blob: Blob | null = null;
+
         if (audioUrl && !audioUrl.startsWith('/api/')) {
           try {
             blob = await streamFetchBlob(audioUrl, (p) => setDownloadProgressText(p), 20000, undefined, session);
@@ -340,9 +347,10 @@ export default function App() {
           const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: idx + 1 });
           return { url: imgUrl, relativePath: pathData.relativePath };
         });
-        setDownloadProgressText(t('compressingPhotos'));
 
+        setDownloadProgressText(t('compressingPhotos'));
         let zipBlob: Blob | null = null;
+
         try {
           const zipItems = items.map((it) => ({
             nameOrPath: it.relativePath,
@@ -457,23 +465,7 @@ export default function App() {
         return;
       }
       console.error('Download single error:', err);
-      // Fallback tự động gọi Native Download nếu luồng fetch gặp trục trặc
-      const fallbackUrl =
-        type === 'video_hd'
-          ? media.video.hd || media.video.noWatermark
-          : type === 'video_sd'
-          ? media.video.noWatermark || media.video.hd
-          : type === 'audio'
-          ? media.audio?.url
-          : undefined;
-      const directUrl = fallbackUrl || media.video.hd || media.video.noWatermark || media.url;
-      const cleanTitle =
-        (media.title || 'video')
-          .replace(/[^\w\s\u4e00-\u9fa5\u00C0-\u1EF9_-]/gi, '')
-          .trim()
-          .slice(0, 40) || media.id || 'download';
-      const ext = type === 'audio' ? 'mp3' : 'mp4';
-      triggerNativeBrowserDownload(directUrl, `${cleanTitle}.${ext}`);
+      window.alert(err?.message || 'Có lỗi xảy ra khi tải tệp.');
     } finally {
       setIsDownloading(false);
       setIsPaused(false);
@@ -494,14 +486,16 @@ export default function App() {
       {/* Header */}
       <header className="w-full bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 shadow-xs">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3">
-          <div
-            className="flex items-center gap-2.5 cursor-pointer select-none shrink-0"
+          
+          {/* Cụm Logo & Tên nền tảng */}
+          <div 
+            className="flex items-center gap-2.5 cursor-pointer select-none shrink-0" 
             onClick={() => setActiveTab('download')}
           >
-            <img
-              src="/logo.svg"
-              alt="SnapTikDou Logo"
-              className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-xs"
+            <img 
+              src="/logo.svg" 
+              alt="SnapTikDou Logo" 
+              className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-xs" 
             />
             <div className="flex flex-col">
               <span className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 leading-none">
@@ -513,7 +507,9 @@ export default function App() {
             </div>
           </div>
 
+          {/* Cụm chức năng bên phải */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Nút Tab: Tải Video */}
             <button
               onClick={() => setActiveTab('download')}
               className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 ${
@@ -529,6 +525,7 @@ export default function App() {
               <span className="hidden md:inline">{t('tabDownload')}</span>
             </button>
 
+            {/* Nút Tab: Lịch Sử */}
             <button
               onClick={() => setActiveTab('history')}
               className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 relative ${
@@ -549,8 +546,10 @@ export default function App() {
               )}
             </button>
 
+            {/* Nút: Chọn Ngôn Ngữ */}
             <LanguageSelector onLanguageChange={handleLanguageChange} />
 
+            {/* Nút: Mở Tab Mới (Dùng để kiểm tra giao diện) */}
             <button
               onClick={() => window.open(window.location.href, '_blank')}
               className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-2xs shrink-0"
@@ -562,11 +561,13 @@ export default function App() {
               <span className="hidden sm:inline">{t('btnOpenNewTab')}</span>
             </button>
           </div>
+
         </div>
       </header>
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8 min-w-0 overflow-hidden">
+        {/* TAB 1: DOWNLOADER */}
         {activeTab === 'download' && (
           <div className="space-y-8 animate-in fade-in duration-200">
             {!currentMedia && (
@@ -608,6 +609,7 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB 2: HISTORY */}
         {activeTab === 'history' && (
           <HistorySection
             records={history}
@@ -636,6 +638,7 @@ export default function App() {
               </a>
             </div>
           </div>
+
           <div>
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
               {t('footerSocial')}
@@ -648,39 +651,56 @@ export default function App() {
               </li>
             </ul>
           </div>
+
           <div>
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
               {t('footerLegal')}
             </h4>
             <ul className="space-y-2.5 text-xs">
               <li>
-                <button onClick={() => setShowTermsModal(true)} className="hover:text-pink-600 transition-colors text-left">
+                <button 
+                  onClick={() => setShowTermsModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
                   {t('termsOfService')}
                 </button>
               </li>
               <li>
-                <button onClick={() => setShowPrivacyModal(true)} className="hover:text-pink-600 transition-colors text-left">
+                <button 
+                  onClick={() => setShowPrivacyModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
                   {t('privacyPolicy')}
                 </button>
               </li>
               <li>
-                <button onClick={() => setShowCookieModal(true)} className="hover:text-pink-600 transition-colors text-left">
+                <button 
+                  onClick={() => setShowCookieModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
                   {t('cookiePolicy')}
                 </button>
               </li>
               <li>
-                <button onClick={() => setShowDisclaimerModal(true)} className="hover:text-pink-600 transition-colors text-left">
+                <button 
+                  onClick={() => setShowDisclaimerModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
                   {t('disclaimerTitle')}
                 </button>
               </li>
               <li>
-                <button onClick={() => setShowDmcaModal(true)} className="hover:text-pink-600 transition-colors text-left">
+                <button 
+                  onClick={() => setShowDmcaModal(true)} 
+                  className="hover:text-pink-600 transition-colors text-left"
+                >
                   DMCA
                 </button>
               </li>
             </ul>
           </div>
         </div>
+
         <div className="max-w-5xl mx-auto pt-6 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400">
             © 2026 <strong className="text-slate-700 font-semibold">SnapTikDou</strong>. All rights reserved.
@@ -688,11 +708,13 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Modals */}
+      {/* Modal Điều khoản sử dụng */}
       {showTermsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
-            <button
+            
+            {/* Nút đóng */}
+            <button 
               onClick={() => setShowTermsModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
             >
@@ -700,25 +722,38 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+
+            {/* Tiêu đề & Giới thiệu */}
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-slate-900">{t('termsContent.title')}</h3>
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('termsContent.title')}
+              </h3>
             </div>
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">{t('termsContent.intro')}</p>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('termsContent.intro')}
+            </p>
+
+            {/* Các điều khoản chi tiết */}
             <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('termsContent.sec1_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('termsContent.sec1_desc')}</p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('termsContent.sec2_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('termsContent.sec2_desc')}</p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('termsContent.sec3_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('termsContent.sec3_desc')}</p>
               </div>
             </div>
+
+            {/* Nút đóng dưới cùng */}
             <div className="mt-5 flex justify-end">
               <button
                 onClick={() => setShowTermsModal(false)}
@@ -727,14 +762,18 @@ export default function App() {
                 {t('btnClose')}
               </button>
             </div>
+
           </div>
         </div>
       )}
 
+      {/* Modal Chính sách bảo mật */}
       {showPrivacyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
-            <button
+            
+            {/* Nút đóng */}
+            <button 
               onClick={() => setShowPrivacyModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
             >
@@ -742,25 +781,38 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+
+            {/* Tiêu đề & Giới thiệu */}
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-slate-900">{t('privacyContent.title')}</h3>
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('privacyContent.title')}
+              </h3>
             </div>
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">{t('privacyContent.intro')}</p>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('privacyContent.intro')}
+            </p>
+
+            {/* Nội dung chính sách */}
             <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('privacyContent.sec1_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('privacyContent.sec1_desc')}</p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('privacyContent.sec2_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('privacyContent.sec2_desc')}</p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('privacyContent.sec3_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('privacyContent.sec3_desc')}</p>
               </div>
             </div>
+
+            {/* Nút đóng chân modal */}
             <div className="mt-5 flex justify-end">
               <button
                 onClick={() => setShowPrivacyModal(false)}
@@ -769,14 +821,18 @@ export default function App() {
                 {t('btnClose')}
               </button>
             </div>
+
           </div>
         </div>
       )}
 
+      {/* Modal Chính sách Cookie */}
       {showCookieModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
-            <button
+            
+            {/* Nút đóng */}
+            <button 
               onClick={() => setShowCookieModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
             >
@@ -784,25 +840,38 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+
+            {/* Tiêu đề & Giới thiệu */}
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-slate-900">{t('cookieContent.title')}</h3>
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('cookieContent.title')}
+              </h3>
             </div>
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">{t('cookieContent.intro')}</p>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('cookieContent.intro')}
+            </p>
+
+            {/* Nội dung chính sách */}
             <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('cookieContent.sec1_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('cookieContent.sec1_desc')}</p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('cookieContent.sec2_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('cookieContent.sec2_desc')}</p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('cookieContent.sec3_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('cookieContent.sec3_desc')}</p>
               </div>
             </div>
+
+            {/* Nút đóng chân modal */}
             <div className="mt-5 flex justify-end">
               <button
                 onClick={() => setShowCookieModal(false)}
@@ -811,14 +880,18 @@ export default function App() {
                 {t('btnClose')}
               </button>
             </div>
+
           </div>
         </div>
       )}
 
+      {/* Modal Miễn trừ trách nhiệm */}
       {showDisclaimerModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
-            <button
+            
+            {/* Nút đóng */}
+            <button 
               onClick={() => setShowDisclaimerModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
             >
@@ -826,25 +899,38 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+
+            {/* Tiêu đề & Giới thiệu */}
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-slate-900">{t('disclaimerContent.title')}</h3>
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('disclaimerContent.title')}
+              </h3>
             </div>
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">{t('disclaimerContent.intro')}</p>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('disclaimerContent.intro')}
+            </p>
+
+            {/* Nội dung chi tiết */}
             <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('disclaimerContent.sec1_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('disclaimerContent.sec1_desc')}</p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('disclaimerContent.sec2_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('disclaimerContent.sec2_desc')}</p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('disclaimerContent.sec3_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('disclaimerContent.sec3_desc')}</p>
               </div>
             </div>
+
+            {/* Nút đóng chân modal */}
             <div className="mt-5 flex justify-end">
               <button
                 onClick={() => setShowDisclaimerModal(false)}
@@ -853,14 +939,18 @@ export default function App() {
                 {t('btnClose')}
               </button>
             </div>
+
           </div>
         </div>
       )}
 
+      {/* Modal DMCA */}
       {showDmcaModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
-            <button
+            
+            {/* Nút đóng */}
+            <button 
               onClick={() => setShowDmcaModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
             >
@@ -868,16 +958,26 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+
+            {/* Tiêu đề & Giới thiệu */}
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-slate-900">{t('dmcaContent.title')}</h3>
+              <h3 className="text-lg font-bold text-slate-900">
+                {t('dmcaContent.title')}
+              </h3>
             </div>
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">{t('dmcaContent.intro')}</p>
+            
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              {t('dmcaContent.intro')}
+            </p>
+
+            {/* Nội dung chi tiết */}
             <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-slate-100 py-3">
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('dmcaContent.sec1_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('dmcaContent.sec1_desc')}</p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('dmcaContent.sec2_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">
@@ -887,11 +987,14 @@ export default function App() {
                   </a>.
                 </p>
               </div>
+
               <div>
                 <h4 className="font-semibold text-slate-800 mb-1">{t('dmcaContent.sec3_title')}</h4>
                 <p className="text-slate-600 leading-relaxed">{t('dmcaContent.sec3_desc')}</p>
               </div>
             </div>
+
+            {/* Nút đóng chân modal */}
             <div className="mt-5 flex justify-end">
               <button
                 onClick={() => setShowDmcaModal(false)}
@@ -900,6 +1003,7 @@ export default function App() {
                 {t('btnClose')}
               </button>
             </div>
+
           </div>
         </div>
       )}
