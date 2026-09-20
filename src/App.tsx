@@ -20,6 +20,11 @@ import {
 const STORAGE_KEY_CONFIG = 'snaptikdou_path_config';
 const STORAGE_KEY_HISTORY = 'snaptikdou_history';
 
+interface DirectDownloadInfo {
+  url: string;
+  filename: string;
+}
+
 export default function App() {
   const { t, i18n } = useTranslation();
   const [lang, setLang] = useState<SupportedLang>(() => getInitialLanguage());
@@ -42,6 +47,8 @@ export default function App() {
   const [currentMedia, setCurrentMedia] = useState<TikTokMediaItem | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [directDownloadInfo, setDirectDownloadInfo] = useState<DirectDownloadInfo | null>(null);
 
   const [pathConfig, setPathConfig] = useState<PathConfig>(() => {
     if (typeof window !== 'undefined') {
@@ -138,6 +145,7 @@ export default function App() {
     setIsLoading(true);
     setCurrentMedia(null);
     setError(null);
+    setDirectDownloadInfo(null);
 
     try {
       const response = await fetch('/api/tiktok/extract', {
@@ -150,6 +158,7 @@ export default function App() {
         throw new Error(data.message || t('errorExtractFailed'));
       }
       setCurrentMedia(data.data);
+      setDirectDownloadInfo(null);
     } catch (err: any) {
       const errorMsg = !navigator.onLine ? t('errNetwork') : (err?.message || t('errorExtractFailed'));
       setError(errorMsg);
@@ -191,6 +200,7 @@ export default function App() {
     setIsDownloading(true);
     setIsPaused(false);
     setDownloadProgressText('Đang kết nối...');
+    setDirectDownloadInfo(null);
 
     try {
       if (type === 'video_hd' || type === 'video_sd') {
@@ -465,7 +475,7 @@ export default function App() {
         return;
       }
 
-      console.error('Download single error, triggering fallback:', err);
+      console.error('Download single error:', err);
       const fallbackUrl =
         type === 'video_hd'
           ? media.video.hd || media.video.noWatermark
@@ -483,15 +493,10 @@ export default function App() {
           .slice(0, 40) || media.id || 'download';
       const ext = type === 'audio' ? 'mp3' : 'mp4';
 
-      if (directUrl) {
-        triggerNativeBrowserDownload(directUrl, `${cleanTitle}.${ext}`);
-        addHistoryRecord(media, `${cleanTitle}.${ext}`, type === 'audio' ? 'audio' : 'video_hd', type === 'audio' ? 'audio' : 'video');
-        setDownloadProgressText(t('downloadCompleted'));
-        setTimeout(() => setDownloadProgressText(''), 2500);
-      } else {
-        setDownloadProgressText(t('errorExtractFailed'));
-        setTimeout(() => setDownloadProgressText(''), 2500);
-      }
+      setDirectDownloadInfo({
+        url: directUrl,
+        filename: `${cleanTitle}.${ext}`,
+      });
     } finally {
       setIsDownloading(false);
       setIsPaused(false);
@@ -499,9 +504,43 @@ export default function App() {
     }
   };
 
+  const handleDirectDownload = async () => {
+    if (!directDownloadInfo?.url) return;
+    const session = createDownloadSession();
+    downloadSessionRef.current = session;
+    try {
+      setIsDownloading(true);
+      setIsPaused(false);
+      setDownloadProgressText('Đang tải tốc độ cao...');
+      const blob = await streamFetchBlob(directDownloadInfo.url, (p) => setDownloadProgressText(p), 45000, undefined, session);
+      if (session.isCancelled) return;
+      await downloadBlobSafely(blob, directDownloadInfo.filename);
+      if (currentMedia) {
+        addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
+      }
+      setDownloadProgressText(t('downloadCompleted'));
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || session.isCancelled) {
+        setDownloadProgressText('Đã hủy');
+        setTimeout(() => setDownloadProgressText(''), 2000);
+        return;
+      }
+      triggerNativeBrowserDownload(directDownloadInfo.url, directDownloadInfo.filename);
+      if (currentMedia) {
+        addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
+      }
+    } finally {
+      setIsDownloading(false);
+      setIsPaused(false);
+      downloadSessionRef.current = null;
+      setTimeout(() => setDownloadProgressText(''), 2500);
+    }
+  };
+
   const handleReDownload = (record: HistoryRecord) => {
     setUrl(record.sourceUrl);
     setActiveTab('download');
+    setDirectDownloadInfo(null);
     handleExtract(record.sourceUrl);
   };
 
@@ -629,6 +668,8 @@ export default function App() {
                 onResumeDownload={handleResumeDownload}
                 onCancelDownload={handleCancelDownload}
                 downloadProgressText={downloadProgressText}
+                directDownloadInfo={directDownloadInfo}
+                onDirectDownload={handleDirectDownload}
                 theme={theme}
               />
             ) : null}

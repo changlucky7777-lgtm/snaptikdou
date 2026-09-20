@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Rocket,
   Play,
   Pause,
   X,
@@ -34,6 +35,8 @@ interface MediaResultCardProps {
   onResumeDownload?: () => void;
   onCancelDownload?: () => void;
   downloadProgressText?: string;
+  directDownloadInfo?: { url: string; filename: string } | null;
+  onDirectDownload?: () => void;
   theme?: 'dark' | 'light';
 }
 
@@ -46,6 +49,8 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   onResumeDownload,
   onCancelDownload,
   downloadProgressText,
+  directDownloadInfo,
+  onDirectDownload,
   theme = 'dark',
 }) => {
   const { t } = useTranslation();
@@ -524,6 +529,20 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Vị trí 4: Nút Tải xuống tốc độ cao */}
+                {directDownloadInfo && !isDownloading && (
+                  <button
+                    id="btn-direct-download-pos4"
+                    type="button"
+                    onClick={onDirectDownload}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 border border-emerald-400/40 shadow-md transition-all duration-200 animate-in fade-in slide-in-from-right-3 cursor-pointer"
+                    title={t('btnDirectDownload')}
+                  >
+                    <Rocket className="w-3.5 h-3.5" />
+                    <span>{t('btnDirectDownload')}</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -740,6 +759,33 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
+
+          {/* Hướng dẫn khi nút Tải xuống tốc độ cao xuất hiện */}
+          {directDownloadInfo && !isDownloading && (
+            <div
+              id="direct-download-guide-box"
+              className={`p-3.5 rounded-xl border text-xs sm:text-sm flex items-start gap-3 shadow-md animate-in fade-in slide-in-from-top-2 duration-300 ${
+                isLight
+                  ? 'bg-emerald-50/90 border-emerald-300 text-slate-700 shadow-emerald-500/5'
+                  : 'bg-emerald-950/40 border-emerald-500/40 text-slate-200 shadow-emerald-950/30'
+              }`}
+            >
+              <div className="flex-1 space-y-1">
+                <div
+                  className={`font-bold flex items-center gap-1.5 ${
+                    isLight ? 'text-emerald-800' : 'text-emerald-400'
+                  }`}
+                >
+                  <span>{t('directDownloadGuideTitle')}</span>
+                </div>
+                <div className={`text-xs sm:text-[13px] leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                  {typeof window !== 'undefined' && (window.matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent))
+                    ? t('directDownloadGuideDescMobile')
+                    : t('directDownloadGuideDescDesktop')}
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
