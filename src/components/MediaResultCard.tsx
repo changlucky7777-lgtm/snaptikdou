@@ -471,8 +471,8 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               {/* KHU VỰC BÊN PHẢI: Thanh tiến trình MP3 thay thế vị trí số 2 */}
               <div className="flex items-center gap-2 flex-wrap">
                 {audioProgress ? (
-                  <div className="flex flex-col gap-1.5 animate-in fade-in duration-150">
-                    {/* Thanh tiến trình mini ở góc phải */}
+                  <div className="flex flex-col gap-1.5 animate-in fade-in duration-150 w-full sm:w-auto">
+                    {/* THANH TIẾN TRÌNH: CHỈ HIỂN THỊ DUNG LƯỢNG VÀ % (KHÔNG CHÈN CHỮ) */}
                     <div className="flex items-center gap-3 bg-sky-50/90 dark:bg-slate-800 border border-sky-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-xs">
                       <div className="flex items-center gap-2">
                         <div className="w-20 sm:w-28 h-2 bg-sky-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -488,9 +488,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                           />
                         </div>
                         <span className="text-xs font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">
-                          {audioProgress.percent === 100
-                            ? (audioProgress.isIOS ? t('iosAudioReadyNotice') : 'Sẵn sàng lưu tệp...')
-                            : audioProgress.isPaused
+                          {audioProgress.isPaused
                             ? 'Đã tạm dừng'
                             : `${audioProgress.currentMB}/${audioProgress.totalMB} MB (${audioProgress.percent}%)`}
                         </span>
@@ -523,12 +521,10 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                       </button>
                     </div>
 
-                    {/* DÒNG HƯỚNG DẪN CHỈ DÀNH RIÊNG CHO iOS (NẰM DƯỚI THANH TIẾN TRÌNH) */}
+                    {/* KHUNG THÔNG BÁO DÀNH CHO iOS (HÌNH 1): CỐ ĐỊNH NỘI DUNG TỪ 0% ĐẾN 100%, TUYỆT ĐỐI KHÔNG BỊ ĐỔI CHỮ HAY BỊ ẨN */}
                     {audioProgress.isIOS && (
-                      <div className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl px-2.5 py-1.5 shadow-2xs max-w-xs">
-                        {audioProgress.percent === 100
-                          ? t('iosAudioReadyNotice')
-                          : t('iosAudioPreparingNotice')}
+                      <div className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl px-2.5 py-1.5 shadow-2xs max-w-sm">
+                        {t('iosAudioPreparingNotice')}
                       </div>
                     )}
                   </div>
