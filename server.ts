@@ -1444,8 +1444,12 @@ app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
   res.redirect(302, downloadUrl);
 });
 
-function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string) {
-  // Đổi đuôi file sang .aac hoặc .mp3 (ADTS stream tương thích hoàn hảo cả 2)
+function transcodeVideoToMp3Stream(
+  videoUrl: string,
+  res: Response,
+  filename: string,
+  durationSec: number = 0
+) {
   const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
   const finalFilename = `${baseName}.mp3`;
   const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim();
@@ -1455,30 +1459,48 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
 
+  // Chuẩn hóa 96kbps: vừa giảm 40% dung lượng file, vừa tải siêu nhanh không nghẽn Safari
+  const audioBitrateKbps = 96;
+  const audioBitrateBps = audioBitrateKbps * 1000;
+
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`
   );
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Accept-Ranges', 'bytes');
 
-  // Thêm header giả lập trình duyệt để CDN TikTok/Douyin không chặn kết nối
+  // Ước lượng trước Content-Length để Safari cấp phát bộ nhớ ngầm ổn định
+  if (durationSec > 0) {
+    const estimatedSizeBytes = Math.floor((durationSec * audioBitrateBps) / 8);
+    res.setHeader('Content-Length', estimatedSizeBytes.toString());
+  }
+
   const ffmpegHeaders = `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`;
 
   const command = ffmpeg()
     .input(videoUrl)
     .inputOptions([
-      `-headers`, ffmpegHeaders,      // Chống lỗi 403 Forbidden từ CDN TikTok
-      `-reconnect 1`,                 // Tự động kết nối lại nếu mạng chập chờn
-      `-reconnect_streamed 1`,
-      `-reconnect_delay_max 5`
+      '-headers', ffmpegHeaders,
+      '-reconnect 1',
+      '-reconnect_streamed 1',
+      '-reconnect_delay_max 5',
     ])
-    .noVideo()                        // Bỏ hình ảnh
-    .audioCodec('copy')               // Copy trực tiếp âm thanh gốc, 0% CPU
-    .format('adts');                  // Định dạng ADTS stream: chạy mượt bất chấp video dài 60 phút
+    .noVideo()
+    .audioCodec('libmp3lame')
+    .audioBitrate(audioBitrateKbps)
+    .format('mp3')
+    .outputOptions([
+      '-preset ultrafast',     // Encode nhanh tối đa
+      '-threads 0',            // Tận dụng hết nhân CPU khả dụng
+      '-flush_packets 1',      // Đẩy gói tin ngay lập tức, không để kết nối bị treo
+      '-id3v2_version 3',
+      '-write_xing 0',
+    ]);
 
   command.on('error', (err) => {
-    if (!err.message.includes('Output stream closed')) {
+    if (!err.message?.includes('Output stream closed')) {
       console.warn('[Audio Stream Error]:', err.message);
     }
     if (!res.headersSent) {
@@ -1489,7 +1511,9 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
   });
 
   res.on('close', () => {
-    try { command.kill('SIGKILL'); } catch {}
+    try {
+      command.kill('SIGKILL');
+    } catch {}
   });
 
   command.pipe(res, { end: true });
@@ -1501,6 +1525,7 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
     const fallbackUrl = ((req.query.fallbackUrl || req.body?.fallbackUrl) as string) || '';
     const postUrl = ((req.query.postUrl || req.body?.postUrl) as string) || '';
     const videoFallback = ((req.query.videoFallback || req.body?.videoFallback) as string) || '';
+    const duration = Number(req.query.duration || req.body?.duration || 0);
     const requestedFilename = ((req.query.filename || req.body?.filename) as string) || 'media.mp4';
     const isMp3Request =
       requestedFilename.endsWith('.mp3') ||
@@ -1575,7 +1600,7 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
       // NHÁNH 2: KHÔNG CÓ LINK AUDIO RIÊNG (Video dài, video không nhạc, chỉ có videoFallback)
       // Kích hoạt FFmpeg tách luồng từ video
       if (videoFallback) {
-        return transcodeVideoToMp3Stream(videoFallback, res, requestedFilename);
+        return transcodeVideoToMp3Stream(videoFallback, res, requestedFilename, duration);
       }
     }
 
