@@ -75,7 +75,7 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
           <div className="flex flex-col items-center animate-in fade-in duration-200">
             <div className="p-2.5 bg-pink-50/50 rounded-2xl border border-pink-100 shadow-inner mb-3">
               <img
-                src="/momo-qr.jpg"
+                src="/momo-qr.png?v=1"
                 alt="MoMo QR"
                 className="w-56 h-auto rounded-xl object-contain shadow-xs"
               />
@@ -97,7 +97,7 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
           <div className="flex flex-col items-center animate-in fade-in duration-200">
             <div className="p-2.5 bg-blue-50/50 rounded-2xl border border-blue-100 shadow-inner mb-3">
               <img
-                src="/paypal-qr.png"
+                src="/paypal-qr.png?v=1"
                 alt="PayPal QR"
                 className="w-56 h-auto rounded-xl object-contain shadow-xs"
               />
