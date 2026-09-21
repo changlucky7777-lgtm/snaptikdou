@@ -15,6 +15,26 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Map lưu trạng thái tải của các session: token -> timestamp hoàn tất
+const completedDownloadTokens = new Map<string, number>();
+
+// Tự động dọn dẹp các token cũ sau mỗi 5 phút để tránh rò rỉ bộ nhớ
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, expireTime] of completedDownloadTokens.entries()) {
+    if (now > expireTime) {
+      completedDownloadTokens.delete(token);
+    }
+  }
+}, 5 * 60 * 1000);
+
+function markDownloadComplete(token?: string) {
+  if (token) {
+    // Lưu trạng thái hoàn tất, giữ trong RAM 2 phút
+    completedDownloadTokens.set(token, Date.now() + 2 * 60 * 1000);
+  }
+}
+
 // Endpoint kiểm tra sức khỏe hệ thống (Health Check)
 app.get('/api/health', (req: Request, res: Response) => {
   res.status(200).json({
@@ -1478,13 +1498,7 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
     .format('adts');                  // Định dạng ADTS stream: chạy mượt bất chấp video dài 60 phút
 
   command.on('end', () => {
-    if (downloadToken) {
-      try {
-        if (!res.headersSent) {
-          res.setHeader('Set-Cookie', `download_complete_${downloadToken}=true; Path=/; Max-Age=60; SameSite=Lax`);
-        }
-      } catch {}
-    }
+    markDownloadComplete(downloadToken);
   });
 
   command.on('error', (err) => {
@@ -1504,6 +1518,14 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
 
   command.pipe(res, { end: true });
 }
+
+app.get('/api/tiktok/check-status', (req: Request, res: Response) => {
+  const token = (req.query.token as string) || '';
+  if (token && completedDownloadTokens.has(token)) {
+    return res.json({ completed: true });
+  }
+  return res.json({ completed: false });
+});
 
 app.all('/api/tiktok/download', async (req: Request, res: Response) => {
   try {
@@ -1573,16 +1595,14 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
           const upstreamLength = audioResponse.headers.get('content-length');
           if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
 
-          if (downloadToken) {
-            res.setHeader('Set-Cookie', `download_complete_${downloadToken}=true; Path=/; Max-Age=60; SameSite=Lax`);
-          }
-
           const streamToPipe =
             typeof (audioResponse.body as any)?.getReader === 'function'
               ? Readable.fromWeb(audioResponse.body as any)
               : audioResponse.body;
 
           await pipeline(streamToPipe as any, res);
+          // Đánh dấu hoàn tất khi pipeline kết thúc thành công
+          markDownloadComplete(downloadToken);
           return;
         }
       }

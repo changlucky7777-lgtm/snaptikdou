@@ -70,12 +70,12 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = React.useRef<any>(null);
 
-  const cookieCheckIntervalRef = React.useRef<any>(null);
+  const statusPollingRef = React.useRef<any>(null);
 
-  const clearCookieCheck = () => {
-    if (cookieCheckIntervalRef.current) {
-      clearInterval(cookieCheckIntervalRef.current);
-      cookieCheckIntervalRef.current = null;
+  const clearStatusPolling = () => {
+    if (statusPollingRef.current) {
+      clearInterval(statusPollingRef.current);
+      statusPollingRef.current = null;
     }
   };
 
@@ -115,7 +115,7 @@ export default function App() {
   };
 
   const handleCancelDownload = () => {
-    clearCookieCheck();
+    clearStatusPolling();
     if (downloadSessionRef.current) {
       downloadSessionRef.current.cancel();
     }
@@ -152,7 +152,7 @@ export default function App() {
 
   useEffect(() => {
     return () => {
-      clearCookieCheck();
+      clearStatusPolling();
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current);
       }
@@ -180,7 +180,7 @@ export default function App() {
     setCurrentMedia(null);
     setError(null);
     setDirectDownloadInfo(null);
-    clearCookieCheck();
+    clearStatusPolling();
     setShowIosWarning(false); // Reset cảnh báo khi lấy link mới
 
     try {
@@ -337,29 +337,31 @@ export default function App() {
         );
         const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
-        // Sinh token định danh cho phiên tải này
+        // Sinh token định danh cho phiên tải
         const token = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
         if (isIOS) {
           showToast(t('toastPreparingDownloadIOS'));
           setShowIosWarning(true);
 
-          // Lắng nghe Cookie từ Server: Mỗi 500ms kiểm tra một lần
-          clearCookieCheck();
-          const targetCookie = `download_complete_${token}=true`;
-          
-          cookieCheckIntervalRef.current = setInterval(() => {
-            if (document.cookie.includes(targetCookie)) {
-              // Server đã stream xong byte cuối cùng -> Tắt cảnh báo ngay lập tức!
-              setShowIosWarning(false);
-              clearCookieCheck();
-              // Xóa cookie để dọn dẹp
-              document.cookie = `download_complete_${token}=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+          // Bắt đầu Polling Server kiểm tra trạng thái mỗi 1 giây
+          clearStatusPolling();
+          statusPollingRef.current = setInterval(async () => {
+            try {
+              const res = await fetch(`/api/tiktok/check-status?token=${token}`);
+              const data = await res.json();
+              if (data && data.completed) {
+                // Server đã hoàn thành luồng stream -> Tắt thông báo ngay lập tức!
+                setShowIosWarning(false);
+                clearStatusPolling();
+              }
+            } catch {
+              // Bỏ qua lỗi kết nối tạm thời trong lúc polling
             }
-          }, 500);
+          }, 1000);
 
-          // Giới hạn an toàn (tự clear sau 15 phút nếu mạng quá chậm/hủy)
-          setTimeout(() => clearCookieCheck(), 15 * 60 * 1000);
+          // Tự động clear sau 15 phút tránh chạy vô hạn
+          setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
         } else if (isAndroid) {
           showToast(t('toastDownloadingAndroid'));
         }
