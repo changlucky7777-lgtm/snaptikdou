@@ -65,6 +65,18 @@ export default function App() {
   });
 
   const [isDownloading, setIsDownloading] = useState(false);
+  const [androidToastMessage, setAndroidToastMessage] = useState<string | null>(null);
+  const androidToastTimerRef = React.useRef<any>(null);
+
+  const showAndroidToast = (message: string) => {
+    if (androidToastTimerRef.current) {
+      clearTimeout(androidToastTimerRef.current);
+    }
+    setAndroidToastMessage(message);
+    androidToastTimerRef.current = setTimeout(() => {
+      setAndroidToastMessage(null);
+    }, 5000); // 5 giây tự động biến mất
+  };
   const [isPaused, setIsPaused] = useState(false);
   const [downloadProgressText, setDownloadProgressText] = useState<string>('');
   const downloadSessionRef = React.useRef<DownloadSession | null>(null);
@@ -289,11 +301,16 @@ export default function App() {
         }
       } else if (type === 'audio') {
         const audioUrl = media.audio?.url || '';
-        // Nếu là slide ảnh thì không cần videoFallback, nếu là video thì gửi kèm videoFallback
         const videoFallbackUrl = media.mediaType === 'photos' ? '' : (media.video?.hd || media.video?.noWatermark || '');
 
         if (!audioUrl && !videoFallbackUrl) {
           throw new Error('Không tìm thấy nguồn âm thanh hoặc video để tải MP3.');
+        }
+
+        // KIỂM TRA THIẾT BỊ ANDROID: Bật toast thông báo 5 giây
+        const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+        if (isAndroid) {
+          showAndroidToast(t('toastDownloadingAndroid'));
         }
 
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
@@ -1034,6 +1051,14 @@ export default function App() {
             </div>
 
           </div>
+        </div>
+      )}
+
+      {/* Toast thông báo cho Android */}
+      {androidToastMessage && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-slate-900/95 text-white text-xs sm:text-sm font-medium shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-2.5 max-w-[90vw] animate-in fade-in slide-in-from-bottom-5 duration-300 pointer-events-none">
+          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+          <span className="leading-snug text-center">{androidToastMessage}</span>
         </div>
       )}
     </div>
