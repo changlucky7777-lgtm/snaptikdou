@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Coffee } from 'lucide-react';
+import { DonateModal } from './components/DonateModal';
 import { LanguageSelector } from './components/LanguageSelector';
 import { UrlInputBar } from './components/UrlInputBar';
 import { MediaResultCard, MediaResultCardSkeleton } from './components/MediaResultCard';
@@ -41,6 +43,7 @@ export default function App() {
   const [showCookieModal, setShowCookieModal] = useState(false);
   const [showDisclaimerModal, setShowDisclaimerModal] = useState(false);
   const [showDmcaModal, setShowDmcaModal] = useState(false);
+  const [isDonateOpen, setIsDonateOpen] = useState(false);
   const theme = 'light';
 
   const [url, setUrl] = useState('');
@@ -678,16 +681,15 @@ export default function App() {
             {/* Nút: Chọn Ngôn Ngữ */}
             <LanguageSelector onLanguageChange={handleLanguageChange} />
 
-            {/* Nút: Mở Tab Mới (Dùng để kiểm tra giao diện) */}
+            {/* NÚT DONATE MỚI (Thay thế nút Mở tab mới) */}
             <button
-              onClick={() => window.open(window.location.href, '_blank')}
-              className="p-1.5 sm:px-3 sm:py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs sm:text-sm font-medium transition flex items-center gap-1.5 shadow-2xs shrink-0"
-              title={t('btnOpenNewTab')}
+              type="button"
+              onClick={() => setIsDonateOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-600 border border-pink-200 active:scale-95 transition-all text-xs font-bold shadow-2xs cursor-pointer"
+              title={t('donateTitle')}
             >
-              <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-              <span className="hidden sm:inline">{t('btnOpenNewTab')}</span>
+              <Coffee className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t('donateBtn')}</span>
             </button>
           </div>
 
@@ -1147,6 +1149,9 @@ export default function App() {
           <span className="leading-snug text-center">{toastMessage}</span>
         </div>
       )}
+
+      {/* Modal Donate */}
+      <DonateModal isOpen={isDonateOpen} onClose={() => setIsDonateOpen(false)} />
     </div>
   );
 }
