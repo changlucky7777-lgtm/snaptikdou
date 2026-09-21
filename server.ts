@@ -1444,7 +1444,7 @@ app.get('/api/tiktok/stream-redirect', (req: Request, res: Response) => {
   res.redirect(302, downloadUrl);
 });
 
-function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string) {
+function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string, downloadToken?: string) {
   // Đổi đuôi file sang .aac hoặc .mp3 (ADTS stream tương thích hoàn hảo cả 2)
   const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
   const finalFilename = `${baseName}.mp3`;
@@ -1477,6 +1477,16 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
     .audioCodec('copy')               // Copy trực tiếp âm thanh gốc, 0% CPU
     .format('adts');                  // Định dạng ADTS stream: chạy mượt bất chấp video dài 60 phút
 
+  command.on('end', () => {
+    if (downloadToken) {
+      try {
+        if (!res.headersSent) {
+          res.setHeader('Set-Cookie', `download_complete_${downloadToken}=true; Path=/; Max-Age=60; SameSite=Lax`);
+        }
+      } catch {}
+    }
+  });
+
   command.on('error', (err) => {
     if (!err.message.includes('Output stream closed')) {
       console.warn('[Audio Stream Error]:', err.message);
@@ -1501,6 +1511,7 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
     const fallbackUrl = ((req.query.fallbackUrl || req.body?.fallbackUrl) as string) || '';
     const postUrl = ((req.query.postUrl || req.body?.postUrl) as string) || '';
     const videoFallback = ((req.query.videoFallback || req.body?.videoFallback) as string) || '';
+    const downloadToken = ((req.query.downloadToken || req.body?.downloadToken) as string) || '';
     const requestedFilename = ((req.query.filename || req.body?.filename) as string) || 'media.mp4';
     const isMp3Request =
       requestedFilename.endsWith('.mp3') ||
@@ -1562,6 +1573,10 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
           const upstreamLength = audioResponse.headers.get('content-length');
           if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
 
+          if (downloadToken) {
+            res.setHeader('Set-Cookie', `download_complete_${downloadToken}=true; Path=/; Max-Age=60; SameSite=Lax`);
+          }
+
           const streamToPipe =
             typeof (audioResponse.body as any)?.getReader === 'function'
               ? Readable.fromWeb(audioResponse.body as any)
@@ -1575,7 +1590,7 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
       // NHÁNH 2: KHÔNG CÓ LINK AUDIO RIÊNG (Video dài, video không nhạc, chỉ có videoFallback)
       // Kích hoạt FFmpeg tách luồng từ video
       if (videoFallback) {
-        return transcodeVideoToMp3Stream(videoFallback, res, requestedFilename);
+        return transcodeVideoToMp3Stream(videoFallback, res, requestedFilename, downloadToken);
       }
     }
 

@@ -70,6 +70,15 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = React.useRef<any>(null);
 
+  const cookieCheckIntervalRef = React.useRef<any>(null);
+
+  const clearCookieCheck = () => {
+    if (cookieCheckIntervalRef.current) {
+      clearInterval(cookieCheckIntervalRef.current);
+      cookieCheckIntervalRef.current = null;
+    }
+  };
+
   const showToast = (message: string) => {
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
@@ -106,6 +115,7 @@ export default function App() {
   };
 
   const handleCancelDownload = () => {
+    clearCookieCheck();
     if (downloadSessionRef.current) {
       downloadSessionRef.current.cancel();
     }
@@ -140,6 +150,15 @@ export default function App() {
     localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history));
   }, [history]);
 
+  useEffect(() => {
+    return () => {
+      clearCookieCheck();
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleExtract = async (targetUrl?: string) => {
     const queryUrl = targetUrl || url;
     const trimmedUrl = (queryUrl || '').trim();
@@ -161,6 +180,7 @@ export default function App() {
     setCurrentMedia(null);
     setError(null);
     setDirectDownloadInfo(null);
+    clearCookieCheck();
     setShowIosWarning(false); // Reset cảnh báo khi lấy link mới
 
     try {
@@ -317,11 +337,29 @@ export default function App() {
         );
         const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
-        // Hiển thị Toast 5s phù hợp cho từng thiết bị
+        // Sinh token định danh cho phiên tải này
+        const token = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
         if (isIOS) {
           showToast(t('toastPreparingDownloadIOS'));
-          // Bật thông báo không tắt màn hình cố định cho iOS
           setShowIosWarning(true);
+
+          // Lắng nghe Cookie từ Server: Mỗi 500ms kiểm tra một lần
+          clearCookieCheck();
+          const targetCookie = `download_complete_${token}=true`;
+          
+          cookieCheckIntervalRef.current = setInterval(() => {
+            if (document.cookie.includes(targetCookie)) {
+              // Server đã stream xong byte cuối cùng -> Tắt cảnh báo ngay lập tức!
+              setShowIosWarning(false);
+              clearCookieCheck();
+              // Xóa cookie để dọn dẹp
+              document.cookie = `download_complete_${token}=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+            }
+          }, 500);
+
+          // Giới hạn an toàn (tự clear sau 15 phút nếu mạng quá chậm/hủy)
+          setTimeout(() => clearCookieCheck(), 15 * 60 * 1000);
         } else if (isAndroid) {
           showToast(t('toastDownloadingAndroid'));
         }
@@ -331,6 +369,7 @@ export default function App() {
           url: audioUrl,
           fallbackUrl: audioUrl,
           videoFallback: videoFallbackUrl,
+          downloadToken: token, // Truyền token lên server
           postUrl: media.url,
           mediaType: 'audio',
           filename: pathData.filename,
