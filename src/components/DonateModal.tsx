@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Coffee, Heart, Download } from 'lucide-react';
 
@@ -8,8 +8,17 @@ interface DonateModalProps {
 }
 
 export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => {
-  const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'momo' | 'paypal'>('momo');
+  const { t, i18n } = useTranslation();
+  
+  const isVietnamese = i18n.language === 'vi' || i18n.language?.startsWith('vi-');
+  const [activeTab, setActiveTab] = useState<'momo' | 'paypal'>(isVietnamese ? 'momo' : 'paypal');
+
+  useEffect(() => {
+    if (isOpen) {
+      const isVi = i18n.language === 'vi' || i18n.language?.startsWith('vi-');
+      setActiveTab(isVi ? 'momo' : 'paypal');
+    }
+  }, [isOpen, i18n.language]);
 
   if (!isOpen) return null;
 
