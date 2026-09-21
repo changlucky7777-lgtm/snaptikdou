@@ -19,6 +19,7 @@ import {
   Play,
   Pause,
   X,
+  AlertCircle,
 } from 'lucide-react';
 import { TikTokMediaItem } from '../types';
 
@@ -102,6 +103,11 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             downloadProgressText.includes('MB') ||
             downloadProgressText.includes('%'))
       ));
+
+  const isMobileDevice =
+    typeof window !== 'undefined' &&
+    (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+      window.matchMedia('(pointer: coarse)').matches);
 
   // Format caption text: highlight hashtags
   const renderFormattedCaption = (text: string) => {
@@ -545,6 +551,14 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 )}
               </div>
             </div>
+
+            {/* DÒNG NHẮC NHỞ: Chỉ hiển thị trên thiết bị Mobile (iOS/Android) khi đang có số liệu tải và tự ẩn khi xong */}
+            {isMobileDevice && hasTransferStarted && !isCompleted && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-[11px] leading-tight animate-in fade-in slide-in-from-top-1 duration-200">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-500 animate-pulse" />
+                <span className="font-medium">{t('keepScreenOnNotice')}</span>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {isPhotoSlide ? (
