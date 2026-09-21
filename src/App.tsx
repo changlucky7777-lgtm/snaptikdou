@@ -65,17 +65,19 @@ export default function App() {
   });
 
   const [isDownloading, setIsDownloading] = useState(false);
-  const [androidToastMessage, setAndroidToastMessage] = useState<string | null>(null);
-  const androidToastTimerRef = React.useRef<any>(null);
+  // State cảnh báo không tắt màn hình cho iOS (giữ cố định không tự tắt)
+  const [showIosWarning, setShowIosWarning] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = React.useRef<any>(null);
 
-  const showAndroidToast = (message: string) => {
-    if (androidToastTimerRef.current) {
-      clearTimeout(androidToastTimerRef.current);
+  const showToast = (message: string) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
     }
-    setAndroidToastMessage(message);
-    androidToastTimerRef.current = setTimeout(() => {
-      setAndroidToastMessage(null);
-    }, 5000); // 5 giây tự động biến mất
+    setToastMessage(message);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 5000);
   };
   const [isPaused, setIsPaused] = useState(false);
   const [downloadProgressText, setDownloadProgressText] = useState<string>('');
@@ -109,6 +111,7 @@ export default function App() {
     }
     setIsDownloading(false);
     setIsPaused(false);
+    setShowIosWarning(false); // Tắt cảnh báo khi người dùng chủ động hủy tải
     setDownloadProgressText('Đã hủy tải');
     setTimeout(() => {
       setDownloadProgressText('');
@@ -158,6 +161,7 @@ export default function App() {
     setCurrentMedia(null);
     setError(null);
     setDirectDownloadInfo(null);
+    setShowIosWarning(false); // Reset cảnh báo khi lấy link mới
 
     try {
       const response = await fetch('/api/tiktok/extract', {
@@ -307,10 +311,19 @@ export default function App() {
           throw new Error('Không tìm thấy nguồn âm thanh hoặc video để tải MP3.');
         }
 
-        // KIỂM TRA THIẾT BỊ ANDROID: Bật toast thông báo 5 giây
+        const isIOS = typeof navigator !== 'undefined' && (
+          /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+        );
         const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
-        if (isAndroid) {
-          showAndroidToast(t('toastDownloadingAndroid'));
+
+        // Hiển thị Toast 5s phù hợp cho từng thiết bị
+        if (isIOS) {
+          showToast(t('toastPreparingDownloadIOS'));
+          // Bật thông báo không tắt màn hình cố định cho iOS
+          setShowIosWarning(true);
+        } else if (isAndroid) {
+          showToast(t('toastDownloadingAndroid'));
         }
 
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
@@ -649,6 +662,7 @@ export default function App() {
                 downloadProgressText={downloadProgressText}
                 directDownloadInfo={directDownloadInfo}
                 onDirectDownload={handleDirectDownload}
+                showIosWarning={showIosWarning}
                 theme={theme}
               />
             ) : null}
@@ -1054,11 +1068,11 @@ export default function App() {
         </div>
       )}
 
-      {/* Toast thông báo cho Android */}
-      {androidToastMessage && (
+      {/* Toast thông báo nổi 5 giây cho iOS và Android */}
+      {toastMessage && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-slate-900/95 text-white text-xs sm:text-sm font-medium shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-2.5 max-w-[90vw] animate-in fade-in slide-in-from-bottom-5 duration-300 pointer-events-none">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-          <span className="leading-snug text-center">{androidToastMessage}</span>
+          <span className="leading-snug text-center">{toastMessage}</span>
         </div>
       )}
     </div>
