@@ -116,6 +116,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
     (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
+  const isAndroid =
+    typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+
   // Format caption text: highlight hashtags
   const renderFormattedCaption = (text: string) => {
     if (!text) return 'Không có mô tả';
@@ -568,6 +571,8 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 <span className="font-medium">
                   {isIOS && hasTransferStarted && !showIosWarning
                     ? t('keepScreenOnFetchNotice')
+                    : isAndroid && hasTransferStarted
+                    ? t('keepScreenOnNoticeAndroid')
                     : t('keepScreenOnNotice')}
                 </span>
               </div>

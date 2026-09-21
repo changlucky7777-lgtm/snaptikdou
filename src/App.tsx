@@ -70,6 +70,9 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = React.useRef<any>(null);
 
+  // Lưu danh sách media ID đã tải MP3 trong phiên để tránh lặp Toast trên Android
+  const downloadedAudioIdsRef = React.useRef<Set<string>>(new Set());
+
   const statusPollingRef = React.useRef<any>(null);
 
   const clearStatusPolling = () => {
@@ -381,7 +384,16 @@ export default function App() {
             // Giới hạn an toàn dọn dẹp sau 15 phút
             setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
           } else if (isAndroid) {
-            showToast(t('toastDownloadingAndroid'));
+            // RIÊNG ANDROID: Chỉ hiện Toast ở lần tải đầu tiên của bài này
+            const mediaKey = media.id || media.url;
+            const hasDownloadedBefore = downloadedAudioIdsRef.current.has(mediaKey);
+
+            if (!hasDownloadedBefore) {
+              showToast(t('toastDownloadingAndroid'));
+              downloadedAudioIdsRef.current.add(mediaKey);
+            }
+            // Nếu đã tải rồi (hasDownloadedBefore === true), bỏ qua không bật Toast
+            // để nhường chỗ cho popup "Tải tệp xuống lần nữa?" của Chrome
           }
         }
 
