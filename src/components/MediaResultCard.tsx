@@ -111,6 +111,11 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
     (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
       window.matchMedia('(pointer: coarse)').matches);
 
+  const isIOS =
+    typeof navigator !== 'undefined' &&
+    (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
   // Format caption text: highlight hashtags
   const renderFormattedCaption = (text: string) => {
     if (!text) return 'Không có mô tả';
@@ -560,7 +565,11 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             {((isMobileDevice && hasTransferStarted && !isCompleted) || showIosWarning) && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-[11px] leading-tight animate-in fade-in slide-in-from-top-1 duration-200">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-500 animate-pulse" />
-                <span className="font-medium">{t('keepScreenOnNotice')}</span>
+                <span className="font-medium">
+                  {isIOS && hasTransferStarted && !showIosWarning
+                    ? t('keepScreenOnFetchNotice')
+                    : t('keepScreenOnNotice')}
+                </span>
               </div>
             )}
 
