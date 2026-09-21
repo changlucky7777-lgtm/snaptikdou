@@ -562,7 +562,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             {/* THÔNG BÁO CẢNH BÁO:
                 1. Hiển thị trên Android khi có tiến trình số liệu (tự ẩn khi xong).
                 2. Hoặc hiển thị cố định trên iOS khi tải MP3 (không tự ẩn trừ khi hủy hoặc lấy link mới). */}
-            {((isMobileDevice && hasTransferStarted && !isCompleted) || showIosWarning) && (
+            {media.mediaType !== 'photos' && ((isMobileDevice && hasTransferStarted && !isCompleted) || showIosWarning) && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-[11px] leading-tight animate-in fade-in slide-in-from-top-1 duration-200">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-500 animate-pulse" />
                 <span className="font-medium">

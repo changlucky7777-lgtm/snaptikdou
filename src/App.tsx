@@ -325,7 +325,8 @@ export default function App() {
         }
       } else if (type === 'audio') {
         const audioUrl = media.audio?.url || '';
-        const videoFallbackUrl = media.mediaType === 'photos' ? '' : (media.video?.hd || media.video?.noWatermark || '');
+        const isPhotoSlide = media.mediaType === 'photos';
+        const videoFallbackUrl = isPhotoSlide ? '' : (media.video?.hd || media.video?.noWatermark || '');
 
         if (!audioUrl && !videoFallbackUrl) {
           throw new Error('Không tìm thấy nguồn âm thanh hoặc video để tải MP3.');
@@ -340,30 +341,33 @@ export default function App() {
         // Sinh token định danh cho phiên tải
         const token = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-        if (isIOS) {
-          showToast(t('toastPreparingDownloadIOS'));
-          setShowIosWarning(true);
+        // CHỈ HIỆN CẢNH BÁO VÀ TOAST KHI LÀ VIDEO (Bỏ qua hoàn toàn đối với bài viết Slide ảnh)
+        if (!isPhotoSlide) {
+          if (isIOS) {
+            showToast(t('toastPreparingDownloadIOS'));
+            setShowIosWarning(true);
 
-          // Bắt đầu Polling Server kiểm tra trạng thái mỗi 1 giây
-          clearStatusPolling();
-          statusPollingRef.current = setInterval(async () => {
-            try {
-              const res = await fetch(`/api/tiktok/check-status?token=${token}`);
-              const data = await res.json();
-              if (data && data.completed) {
-                // Server đã hoàn thành luồng stream -> Tắt thông báo ngay lập tức!
-                setShowIosWarning(false);
-                clearStatusPolling();
+            // Bắt đầu Polling Server kiểm tra trạng thái mỗi 1 giây
+            clearStatusPolling();
+            statusPollingRef.current = setInterval(async () => {
+              try {
+                const res = await fetch(`/api/tiktok/check-status?token=${token}`);
+                const data = await res.json();
+                if (data && data.completed) {
+                  // Server đã hoàn thành luồng stream -> Tắt thông báo ngay lập tức!
+                  setShowIosWarning(false);
+                  clearStatusPolling();
+                }
+              } catch {
+                // Bỏ qua lỗi kết nối tạm thời trong lúc polling
               }
-            } catch {
-              // Bỏ qua lỗi kết nối tạm thời trong lúc polling
-            }
-          }, 1000);
+            }, 1000);
 
-          // Tự động clear sau 15 phút tránh chạy vô hạn
-          setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
-        } else if (isAndroid) {
-          showToast(t('toastDownloadingAndroid'));
+            // Tự động clear sau 15 phút tránh chạy vô hạn
+            setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
+          } else if (isAndroid) {
+            showToast(t('toastDownloadingAndroid'));
+          }
         }
 
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
