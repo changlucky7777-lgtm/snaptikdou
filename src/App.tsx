@@ -344,26 +344,33 @@ export default function App() {
         // CHỈ HIỆN CẢNH BÁO VÀ TOAST KHI LÀ VIDEO (Bỏ qua hoàn toàn đối với bài viết Slide ảnh)
         if (!isPhotoSlide) {
           if (isIOS) {
+            // 1. Chỉ hiện Toast "Đang chuẩn bị...", CHƯA bật khung màu cam
             showToast(t('toastPreparingDownloadIOS'));
-            setShowIosWarning(true);
+            setShowIosWarning(false);
 
-            // Bắt đầu Polling Server kiểm tra trạng thái mỗi 1 giây
             clearStatusPolling();
             statusPollingRef.current = setInterval(async () => {
               try {
                 const res = await fetch(`/api/tiktok/check-status?token=${token}`);
                 const data = await res.json();
-                if (data && data.completed) {
-                  // Server đã hoàn thành luồng stream -> Tắt thông báo ngay lập tức!
+                
+                // KHI NGƯỜI DÙNG BẤM "DOWNLOAD" TRÊN SAFARI:
+                // Server bắt đầu stream -> Tắt Toast và bật khung màu cam!
+                if (data && data.status === 'started') {
+                  setToastMessage(null); // Tắt Toast chuẩn bị
+                  setShowIosWarning(true); // Bật thông báo màu cam bên dưới Tùy chọn tải về
+                }
+
+                // KHI HOÀN TẤT: Tắt khung màu cam
+                if (data && data.status === 'completed') {
                   setShowIosWarning(false);
                   clearStatusPolling();
                 }
               } catch {
-                // Bỏ qua lỗi kết nối tạm thời trong lúc polling
+                // Bỏ qua lỗi kết nối trong lúc polling
               }
-            }, 1000);
+            }, 800); // Polling mỗi 800ms để phản hồi nhanh nhất
 
-            // Tự động clear sau 15 phút tránh chạy vô hạn
             setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
           } else if (isAndroid) {
             showToast(t('toastDownloadingAndroid'));

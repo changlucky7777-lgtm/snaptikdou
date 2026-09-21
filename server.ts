@@ -15,23 +15,38 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Map lưu trạng thái tải của các session: token -> timestamp hoàn tất
-const completedDownloadTokens = new Map<string, number>();
+// Quản lý trạng thái token: 'started' (đang stream) | 'completed' (đã xong)
+interface DownloadStatusEntry {
+  status: 'started' | 'completed';
+  expireAt: number;
+}
+const downloadTokenTracker = new Map<string, DownloadStatusEntry>();
 
-// Tự động dọn dẹp các token cũ sau mỗi 5 phút để tránh rò rỉ bộ nhớ
+// Dọn dẹp token hết hạn định kỳ
 setInterval(() => {
   const now = Date.now();
-  for (const [token, expireTime] of completedDownloadTokens.entries()) {
-    if (now > expireTime) {
-      completedDownloadTokens.delete(token);
+  for (const [token, entry] of downloadTokenTracker.entries()) {
+    if (now > entry.expireAt) {
+      downloadTokenTracker.delete(token);
     }
   }
 }, 5 * 60 * 1000);
 
+function markDownloadStarted(token?: string) {
+  if (token) {
+    downloadTokenTracker.set(token, {
+      status: 'started',
+      expireAt: Date.now() + 10 * 60 * 1000, // 10 phút
+    });
+  }
+}
+
 function markDownloadComplete(token?: string) {
   if (token) {
-    // Lưu trạng thái hoàn tất, giữ trong RAM 2 phút
-    completedDownloadTokens.set(token, Date.now() + 2 * 60 * 1000);
+    downloadTokenTracker.set(token, {
+      status: 'completed',
+      expireAt: Date.now() + 2 * 60 * 1000, // Lưu kết quả thêm 2 phút
+    });
   }
 }
 
@@ -1497,6 +1512,9 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
     .audioCodec('copy')               // Copy trực tiếp âm thanh gốc, 0% CPU
     .format('adts');                  // Định dạng ADTS stream: chạy mượt bất chấp video dài 60 phút
 
+  // Đánh dấu luồng stream thực tế đã bắt đầu (người dùng đã bấm Download trên Safari)
+  markDownloadStarted(downloadToken);
+
   command.on('end', () => {
     markDownloadComplete(downloadToken);
   });
@@ -1521,10 +1539,11 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
 
 app.get('/api/tiktok/check-status', (req: Request, res: Response) => {
   const token = (req.query.token as string) || '';
-  if (token && completedDownloadTokens.has(token)) {
-    return res.json({ completed: true });
+  if (token && downloadTokenTracker.has(token)) {
+    const entry = downloadTokenTracker.get(token)!;
+    return res.json({ status: entry.status });
   }
-  return res.json({ completed: false });
+  return res.json({ status: 'pending' });
 });
 
 app.all('/api/tiktok/download', async (req: Request, res: Response) => {
@@ -1595,13 +1614,15 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
           const upstreamLength = audioResponse.headers.get('content-length');
           if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
 
+          // Đánh dấu Safari bắt đầu kéo stream trực tiếp
+          markDownloadStarted(downloadToken);
+
           const streamToPipe =
             typeof (audioResponse.body as any)?.getReader === 'function'
               ? Readable.fromWeb(audioResponse.body as any)
               : audioResponse.body;
 
           await pipeline(streamToPipe as any, res);
-          // Đánh dấu hoàn tất khi pipeline kết thúc thành công
           markDownloadComplete(downloadToken);
           return;
         }
