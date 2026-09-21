@@ -344,7 +344,7 @@ export default function App() {
         // CHỈ HIỆN CẢNH BÁO VÀ TOAST KHI LÀ VIDEO (Bỏ qua hoàn toàn đối với bài viết Slide ảnh)
         if (!isPhotoSlide) {
           if (isIOS) {
-            // 1. Chỉ hiện Toast "Đang chuẩn bị...", CHƯA bật khung màu cam
+            // 1. Chỉ hiện Toast "Đang chuẩn bị...", khung màu cam tuyệt đối chưa hiện
             showToast(t('toastPreparingDownloadIOS'));
             setShowIosWarning(false);
 
@@ -353,24 +353,32 @@ export default function App() {
               try {
                 const res = await fetch(`/api/tiktok/check-status?token=${token}`);
                 const data = await res.json();
-                
-                // KHI NGƯỜI DÙNG BẤM "DOWNLOAD" TRÊN SAFARI:
-                // Server bắt đầu stream -> Tắt Toast và bật khung màu cam!
-                if (data && data.status === 'started') {
-                  setToastMessage(null); // Tắt Toast chuẩn bị
-                  setShowIosWarning(true); // Bật thông báo màu cam bên dưới Tùy chọn tải về
-                }
 
-                // KHI HOÀN TẤT: Tắt khung màu cam
-                if (data && data.status === 'completed') {
-                  setShowIosWarning(false);
-                  clearStatusPolling();
+                if (data) {
+                  // ĐỒNG BỘ TRẠNG THÁI THEO KẾT NỐI THỰC TẾ:
+                  if (data.isActive) {
+                    // Đang có luồng dữ liệu truyền tải thực tế:
+                    // -> Tắt Toast và hiển thị khung cảnh báo màu cam
+                    setToastMessage(null);
+                    setShowIosWarning(true);
+                  } else {
+                    // Không có luồng truyền tải nào (bấm dấu X, hoặc vào Downloads bấm tạm dừng/hủy):
+                    // -> Tuyệt đối ẩn khung màu cam ngay lập tức!
+                    setShowIosWarning(false);
+                  }
+
+                  // Khi đã hoàn tất 100%:
+                  if (data.isCompleted) {
+                    setShowIosWarning(false);
+                    clearStatusPolling();
+                  }
                 }
               } catch {
-                // Bỏ qua lỗi kết nối trong lúc polling
+                // Bỏ qua lỗi tạm thời khi polling
               }
-            }, 800); // Polling mỗi 800ms để phản hồi nhanh nhất
+            }, 800);
 
+            // Giới hạn an toàn dọn dẹp sau 15 phút
             setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
           } else if (isAndroid) {
             showToast(t('toastDownloadingAndroid'));

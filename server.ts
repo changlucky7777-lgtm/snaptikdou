@@ -15,39 +15,43 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Quản lý trạng thái token: 'started' (đang stream) | 'completed' (đã xong)
-interface DownloadStatusEntry {
-  status: 'started' | 'completed';
-  expireAt: number;
+// Quản lý phiên tải thực tế dựa trên kết nối sống (Socket Liveness)
+interface ActiveDownloadSession {
+  isActive: boolean;
+  isCompleted: boolean;
+  lastActive: number;
 }
-const downloadTokenTracker = new Map<string, DownloadStatusEntry>();
+const activeDownloadSessions = new Map<string, ActiveDownloadSession>();
 
-// Dọn dẹp token hết hạn định kỳ
+// Dọn dẹp session sau 15 phút không có hoạt động
 setInterval(() => {
   const now = Date.now();
-  for (const [token, entry] of downloadTokenTracker.entries()) {
-    if (now > entry.expireAt) {
-      downloadTokenTracker.delete(token);
+  for (const [token, session] of activeDownloadSessions.entries()) {
+    if (now - session.lastActive > 15 * 60 * 1000) {
+      activeDownloadSessions.delete(token);
     }
   }
 }, 5 * 60 * 1000);
 
-function markDownloadStarted(token?: string) {
-  if (token) {
-    downloadTokenTracker.set(token, {
-      status: 'started',
-      expireAt: Date.now() + 10 * 60 * 1000, // 10 phút
-    });
-  }
+function setSessionActive(token?: string, isActive: boolean = true) {
+  if (!token) return;
+  const session = activeDownloadSessions.get(token) || {
+    isActive: false,
+    isCompleted: false,
+    lastActive: Date.now(),
+  };
+  session.isActive = isActive;
+  session.lastActive = Date.now();
+  activeDownloadSessions.set(token, session);
 }
 
-function markDownloadComplete(token?: string) {
-  if (token) {
-    downloadTokenTracker.set(token, {
-      status: 'completed',
-      expireAt: Date.now() + 2 * 60 * 1000, // Lưu kết quả thêm 2 phút
-    });
-  }
+function setSessionCompleted(token?: string) {
+  if (!token) return;
+  activeDownloadSessions.set(token, {
+    isActive: false,
+    isCompleted: true,
+    lastActive: Date.now(),
+  });
 }
 
 // Endpoint kiểm tra sức khỏe hệ thống (Health Check)
@@ -1512,14 +1516,17 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
     .audioCodec('copy')               // Copy trực tiếp âm thanh gốc, 0% CPU
     .format('adts');                  // Định dạng ADTS stream: chạy mượt bất chấp video dài 60 phút
 
-  // Đánh dấu luồng stream thực tế đã bắt đầu (người dùng đã bấm Download trên Safari)
-  markDownloadStarted(downloadToken);
+  // 1. Kích hoạt trạng thái đang tải thực tế
+  setSessionActive(downloadToken, true);
 
   command.on('end', () => {
-    markDownloadComplete(downloadToken);
+    // 2. Hoàn tất thành công 100%
+    setSessionCompleted(downloadToken);
   });
 
   command.on('error', (err) => {
+    // Đóng session khi có lỗi
+    setSessionActive(downloadToken, false);
     if (!err.message.includes('Output stream closed')) {
       console.warn('[Audio Stream Error]:', err.message);
     }
@@ -1532,6 +1539,10 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
 
   res.on('close', () => {
     try { command.kill('SIGKILL'); } catch {}
+    // Nếu kết nối đóng trước khi hoàn tất (bấm X, hủy tải, dừng tải trong Downloads)
+    if (!res.writableEnded) {
+      setSessionActive(downloadToken, false);
+    }
   });
 
   command.pipe(res, { end: true });
@@ -1539,11 +1550,14 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
 
 app.get('/api/tiktok/check-status', (req: Request, res: Response) => {
   const token = (req.query.token as string) || '';
-  if (token && downloadTokenTracker.has(token)) {
-    const entry = downloadTokenTracker.get(token)!;
-    return res.json({ status: entry.status });
+  if (token && activeDownloadSessions.has(token)) {
+    const session = activeDownloadSessions.get(token)!;
+    return res.json({
+      isActive: session.isActive,
+      isCompleted: session.isCompleted,
+    });
   }
-  return res.json({ status: 'pending' });
+  return res.json({ isActive: false, isCompleted: false });
 });
 
 app.all('/api/tiktok/download', async (req: Request, res: Response) => {
@@ -1614,8 +1628,14 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
           const upstreamLength = audioResponse.headers.get('content-length');
           if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
 
-          // Đánh dấu Safari bắt đầu kéo stream trực tiếp
-          markDownloadStarted(downloadToken);
+          // Kích hoạt trạng thái đang truyền dữ liệu
+          setSessionActive(downloadToken, true);
+
+          res.on('close', () => {
+            if (!res.writableEnded) {
+              setSessionActive(downloadToken, false);
+            }
+          });
 
           const streamToPipe =
             typeof (audioResponse.body as any)?.getReader === 'function'
@@ -1623,7 +1643,8 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
               : audioResponse.body;
 
           await pipeline(streamToPipe as any, res);
-          markDownloadComplete(downloadToken);
+          // Đánh dấu hoàn tất
+          setSessionCompleted(downloadToken);
           return;
         }
       }
