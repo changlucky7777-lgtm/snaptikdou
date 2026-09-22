@@ -40,7 +40,6 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-3 px-2">
-      {/* Search Input Box dạng Safari Pill */}
       <div className="relative flex items-center bg-white/90 backdrop-blur-md rounded-2xl p-1.5 shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-black/[0.08] focus-within:border-[#007AFF] focus-within:ring-2 focus-within:ring-[#007AFF]/20 transition-all">
         <div className="pl-3 pr-2 text-[#8E8E93]">
           <Search className="w-5 h-5" />
@@ -75,7 +74,6 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
         )}
       </div>
 
-      {/* Primary Action Button: Nút đen than sang trọng chuẩn Apple */}
       <div className="flex justify-center">
         <button
           type="button"

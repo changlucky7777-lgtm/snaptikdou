@@ -61,8 +61,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
 
   const isPhotos = media.mediaType === 'photos' && media.images?.length > 0;
   const totalSlides = isPhotos ? media.images.length : 0;
-
-  // Lấy link video an toàn chạy qua proxy hoặc luồng media trực tiếp
   const videoPreviewSrc = media.video?.hd || media.video?.noWatermark || '';
 
   const nextSlide = () => {
@@ -76,7 +74,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   return (
     <div className="w-full max-w-2xl mx-auto bg-white rounded-[28px] p-5 sm:p-7 shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-black/[0.05] space-y-5 animate-in fade-in duration-300">
       
-      {/* Tác giả & Thông số tương tác */}
+      {/* Header tác giả */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <img
@@ -105,9 +103,8 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       </div>
 
-      {/* Khung hiển thị nội dung Media */}
+      {/* Khung xem nội dung */}
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-        {/* Bên trái: Thumbnail / Preview */}
         <div className="sm:col-span-5 relative rounded-2xl overflow-hidden bg-black/5 aspect-[3/4] flex items-center justify-center border border-black/[0.06] group">
           {isPhotos ? (
             <>
@@ -145,7 +142,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 alt="Video Cover"
                 className="w-full h-full object-cover"
               />
-              {/* Nút Play trung tâm: Kích hoạt modal xem trước tại chỗ */}
               <button
                 type="button"
                 onClick={() => setIsPreviewOpen(true)}
@@ -155,7 +151,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 <Play className="w-5 h-5 ml-0.5 fill-[#1C1C1E]" />
               </button>
 
-              {/* Nút nhỏ Mở video góc dưới */}
               <button
                 type="button"
                 onClick={() => setIsPreviewOpen(true)}
@@ -168,7 +163,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
           )}
         </div>
 
-        {/* Bên phải: Tiêu đề & Thông tin âm thanh */}
+        {/* Tiêu đề & Âm thanh */}
         <div className="sm:col-span-7 flex flex-col justify-between space-y-3">
           <div className="space-y-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[#8E8E93]">
@@ -195,7 +190,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       </div>
 
-      {/* 1. THANH TIẾN TRÌNH TẢI */}
+      {/* Thanh tiến trình tải */}
       {downloadProgressText && (
         <div className="space-y-2 animate-in fade-in duration-200">
           <div className="p-3.5 rounded-2xl bg-[#F2F2F7] border border-black/[0.06] flex items-center justify-between gap-3">
@@ -230,7 +225,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             </div>
           </div>
 
-          {/* DÒNG THÔNG BÁO CHO DESKTOP VÀ ANDROID (chỉ hiện khi đang tải và không phải iOS) */}
+          {/* Dòng cảnh báo màu vàng cam trên Desktop / Android */}
           {typeof navigator !== 'undefined' && !/iPad|iPhone|iPod/.test(navigator.userAgent) && (
             <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -242,7 +237,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       )}
 
-      {/* 2. DÒNG THÔNG BÁO DÀNH RIÊNG CHO IOS (Chỉ hiện khi nhận tín hiệu người dùng đã nhấn "Tải về" trên popup) */}
+      {/* Dòng cảnh báo dành riêng cho iOS (chỉ hiện khi nhận tín hiệu nhấn "Tải về" qua showIosWarning) */}
       {showIosWarning && (
         <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -252,7 +247,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       )}
 
-      {/* Nút fallback tải tốc độ cao */}
+      {/* Fallback tốc độ cao */}
       {directDownloadInfo && (
         <button
           type="button"
@@ -264,7 +259,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </button>
       )}
 
-      {/* Danh sách các nút tải phong cách Apple Inset Grouped */}
+      {/* Inset Grouped Action Buttons */}
       <div className="space-y-2 pt-2">
         <span className="text-[11px] font-bold uppercase tracking-wider text-[#8E8E93] block px-1">
           {t('downloadOptions')}
@@ -345,7 +340,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         )}
       </div>
 
-      {/* MODAL XEM TRƯỚC VIDEO TRỰC TIẾP TẠI TRANG (KHÔNG BỊ NHẢY TAB MỚI) */}
+      {/* Modal xem trước video tại chỗ (không nhảy tab mới) */}
       {isPreviewOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-200"
