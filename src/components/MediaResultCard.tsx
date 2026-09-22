@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Play, Download, Music, Eye, Heart, MessageCircle, Share2, 
-  ChevronLeft, ChevronRight, Pause, Play as ResumeIcon, X, Film, Info
+  ChevronLeft, ChevronRight, Pause, Play as ResumeIcon, X, Film, Info, Images
 } from 'lucide-react';
 import { TikTokMediaItem } from '../types';
 
@@ -174,7 +174,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
           )}
         </div>
 
-        {/* Tiêu đề & Âm thanh */}
+        {/* Bên phải: Caption & Dòng âm thanh phụ */}
         <div className="sm:col-span-7 flex flex-col justify-between space-y-3">
           <div className="space-y-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[#8E8E93]">
@@ -183,20 +183,21 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             <p className="text-xs sm:text-sm text-[#1C1C1E] leading-relaxed line-clamp-4 select-text">
               {media.title || 'No description available'}
             </p>
-          </div>
 
-          <div className="p-3 rounded-2xl bg-[#F2F2F7] border border-black/[0.04] flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-white text-[#007AFF] shadow-2xs shrink-0">
-              <Music className="w-4 h-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-[#1C1C1E] truncate">
-                {media.audio?.title || 'Original Audio'}
-              </p>
-              <p className="text-[11px] text-[#8E8E93] truncate">
-                {media.audio?.author || 'Creator'}
-              </p>
-            </div>
+            {/* DÒNG TEXT ÂM THANH INLINE TINH TẾ (THAY THẾ CHO KHUNG SỐ 1 CŨ) */}
+            {media.audio && (
+              <div className="flex items-center gap-1.5 pt-1 text-xs text-[#8E8E93]">
+                <Music className="w-3.5 h-3.5 text-[#007AFF] shrink-0" />
+                <span className="truncate text-[#1C1C1E] font-medium">
+                  {media.audio.title || 'Original Audio'}
+                </span>
+                {media.audio.author && (
+                  <span className="truncate text-[#8E8E93]">
+                    — {media.audio.author}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -264,8 +265,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F2F2F7] hover:bg-[#E5E5EA] transition-all cursor-pointer text-left active:scale-[0.96]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs">
-                  <Download className="w-5 h-5" />
+                {/* Ô VUÔNG TRẮNG: ĐỔI SANG ICON IMAGES */}
+                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs shrink-0">
+                  <Images className="w-5 h-5" />
                 </div>
                 <div>
                   <h5 className="text-xs font-bold text-[#1C1C1E]">
@@ -283,8 +285,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F2F2F7] hover:bg-[#E5E5EA] transition-all cursor-pointer text-left active:scale-[0.96]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs">
-                  <Download className="w-5 h-5" />
+                {/* Ô VUÔNG TRẮNG: ĐỔI SANG ICON FILM */}
+                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs shrink-0">
+                  <Film className="w-5 h-5" />
                 </div>
                 <div>
                   <h5 className="text-xs font-bold text-[#1C1C1E]">
