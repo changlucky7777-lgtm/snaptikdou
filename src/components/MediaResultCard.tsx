@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Play, Download, Music, Eye, Heart, MessageCircle, Share2, 
-  ChevronLeft, ChevronRight, Pause, Play as ResumeIcon, X, Film
+  ChevronLeft, ChevronRight, Pause, Play as ResumeIcon, X, Film, Info
 } from 'lucide-react';
 import { TikTokMediaItem } from '../types';
 
@@ -57,6 +57,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   const { t } = useTranslation();
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const isMobileDevice = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const isPhotos = media.mediaType === 'photos' && media.images?.length > 0;
   const totalSlides = isPhotos ? media.images.length : 0;
@@ -304,6 +305,16 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             <Download className="w-4 h-4 text-[#8E8E93]" />
           </button>
         </div>
+
+        {/* DÒNG CHÚ Ý CỐ ĐỊNH DÀNH RIÊNG CHO IOS & ANDROID (ẨN TRÊN DESKTOP) */}
+        {isMobileDevice && (
+          <div className="pt-2 px-1 text-center">
+            <p className="text-[11px] text-[#8E8E93] leading-relaxed flex items-center justify-center gap-1.5 font-normal">
+              <Info className="w-3.5 h-3.5 text-[#8E8E93] shrink-0" />
+              <span>{t('mobileKeepOpenNotice')}</span>
+            </p>
+          </div>
+        )}
 
         {isPhotos && (
           <div className="pt-2">

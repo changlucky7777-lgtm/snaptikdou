@@ -293,14 +293,8 @@ export default function App() {
         if (blob) {
           await downloadBlobSafely(blob, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, type, 'video');
-          const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-          if (isMobile) {
-            setDownloadProgressText(t('downloadCompleted'));
-            setTimeout(() => setDownloadProgressText(''), 3000);
-          } else {
-            // Trên Desktop: đóng thanh tiến trình ngay lập tức, không hiện "Đã tải xong!"
-            setDownloadProgressText('');
-          }
+          // Xóa ngay tiến trình, không hiển thị thanh "Đã tải xong!"
+          setDownloadProgressText('');
         } else {
           triggerNativeBrowserDownload(downloadUrl, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, type, 'video');
@@ -339,9 +333,8 @@ export default function App() {
                 }
                 if (data.isCompleted) {
                   setShowIosWarning(false);
-                  setDownloadProgressText(t('downloadCompleted'));
+                  setDownloadProgressText('');
                   clearStatusPolling();
-                  setTimeout(() => setDownloadProgressText(''), 3000);
                 }
               }
             } catch {}
@@ -349,18 +342,16 @@ export default function App() {
           setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
 
         } else if (isAndroid) {
-          // NHÁNH DÀNH CHO ANDROID (GIỮ NGUYÊN VẸN)
           const mediaKey = media.id || media.url;
           const hasDownloadedBefore = downloadedAudioIdsRef.current.has(mediaKey);
           if (!hasDownloadedBefore) {
             showToast(t('toastDownloadingAndroid'));
             downloadedAudioIdsRef.current.add(mediaKey);
           }
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 2500);
-
+          // Giữ nguyên Toast, xóa thanh "Đã tải xong!"
+          setDownloadProgressText('');
         } else {
-          // NHÁNH DÀNH CHO DESKTOP: Không hiện "Đã tải xong!"
+          // Desktop
           setDownloadProgressText('');
         }
 
@@ -421,8 +412,7 @@ export default function App() {
         if (zipBlob) {
           await downloadBlobSafely(zipBlob, `@${media.author.uniqueId}_photo_slides.zip`);
           addHistoryRecord(media, `@${media.author.uniqueId}/photos/ (${items.length} ảnh)`, 'photos_zip', 'photos');
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 3000);
+          setDownloadProgressText('');
         } else {
           throw new Error('Không thể nén ZIP cho album ảnh.');
         }
@@ -477,8 +467,7 @@ export default function App() {
         if (blob) {
           await downloadBlobSafely(blob, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, 'photo_single', 'photos');
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 3000);
+          setDownloadProgressText('');
         } else {
           triggerNativeBrowserDownload(photoDownloadUrl, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, 'photo_single', 'photos');
@@ -531,7 +520,7 @@ export default function App() {
       if (currentMedia) {
         addHistoryRecord(currentMedia, directDownloadInfo.filename, 'video_hd', 'video');
       }
-      setDownloadProgressText(t('downloadCompleted'));
+      setDownloadProgressText('');
     } catch (err: any) {
       if (err?.name === 'AbortError' || session.isCancelled) {
         setDownloadProgressText('Đã hủy');
