@@ -195,7 +195,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       </div>
 
-      {/* 1. THANH TIẾN TRÌNH TẢI: Khi được kích hoạt sẽ hiển thị */}
+      {/* 1. THANH TIẾN TRÌNH TẢI VIDEO/SLIDE/DIRECT: Chỉ hiện khi có downloadProgressText */}
       {downloadProgressText && (
         <div className="space-y-2 animate-in fade-in duration-200">
           <div className="p-3.5 rounded-2xl bg-[#F2F2F7] border border-black/[0.06] flex items-center justify-between gap-3">
@@ -230,21 +230,25 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             </div>
           </div>
 
-          {/* 2. DÒNG THÔNG BÁO CẢNH BÁO CHO CẢ IOS & ANDROID: Chỉ hiển thị khi có thanh tiến trình tải đang chạy */}
-          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-            <p className="leading-relaxed font-medium">
-              {t('keepScreenOnNoticeAndroid') || 'Không tắt hoặc thoát màn hình giao diện trước khi quá trình tải về hoàn tất.'}
-            </p>
-          </div>
+          {/* Dòng cảnh báo khi đang có tiến trình tải video */}
+          {isDownloading && (
+            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <p className="leading-relaxed font-medium">
+                {t('keepScreenOnNoticeAndroid') || 'Không tắt hoặc thoát màn hình giao diện trước khi quá trình tải về hoàn tất.'}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Thông báo riêng biệt nếu showIosWarning được kích hoạt độc lập */}
-      {showIosWarning && !downloadProgressText && (
-        <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-start gap-2.5">
+      {/* 2. CẢNH BÁO CHO IOS KHI TẢI MP3: CHỈ XUẤT HIỆN KHI NGƯỜI DÙNG ĐÃ NHẤN NÚT "TẢI VỀ" TRÊN POPUP SAFARI */}
+      {showIosWarning && (
+        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="leading-relaxed">{t('keepScreenOnNotice')}</p>
+          <p className="leading-relaxed font-medium">
+            {t('keepScreenOnNotice') || 'Không tắt hoặc thoát màn hình giao diện trước khi quá trình tải về hoàn tất.'}
+          </p>
         </div>
       )}
 

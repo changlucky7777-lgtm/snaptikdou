@@ -333,7 +333,7 @@ export default function App() {
         const videoFallbackUrl = isPhotoSlide ? '' : (media.video?.hd || media.video?.noWatermark || '');
 
         if (!audioUrl && !videoFallbackUrl) {
-          throw new Error('Không tìm thấy nguồn âm thanh hoặc video để tải MP3.');
+          throw new Error('Không tìm thấy nguồn âm thanh hoặc video để đổi MP3.');
         }
 
         const isIOS = typeof navigator !== 'undefined' && (
@@ -342,59 +342,55 @@ export default function App() {
         );
         const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
-        // Sinh token định danh cho phiên tải
+        // Sinh token mới cho mỗi lần bấm tải
         const token = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-        // CHỈ HIỆN CẢNH BÁO VÀ TOAST KHI LÀ VIDEO (Bỏ qua hoàn toàn đối với bài viết Slide ảnh)
+        // Dọn dẹp trạng thái cũ trước khi bắt đầu tải mới
+        clearStatusPolling();
+        setDownloadProgressText('');
+        setShowIosWarning(false);
+
         if (!isPhotoSlide) {
           if (isIOS) {
-            // 1. Chỉ hiện Toast "Đang chuẩn bị...", khung màu cam tuyệt đối chưa hiện
+            // Chỉ hiển thị Toast chuẩn bị, TUYỆT ĐỐI chưa bật khung màu cam
             showToast(t('toastPreparingDownloadIOS'));
             setShowIosWarning(false);
 
-            clearStatusPolling();
             statusPollingRef.current = setInterval(async () => {
               try {
                 const res = await fetch(`/api/tiktok/check-status?token=${token}`);
                 const data = await res.json();
-
                 if (data) {
-                  // ĐỒNG BỘ TRẠNG THÁI THEO KẾT NỐI THỰC TẾ:
+                  // Chỉ khi người dùng bấm "Tải về" trên popup iOS: Safari bắt đầu kéo dữ liệu -> data.isActive = true
                   if (data.isActive) {
-                    // Đang có luồng dữ liệu truyền tải thực tế:
-                    // -> Tắt Toast và hiển thị khung cảnh báo màu cam
                     setToastMessage(null);
                     setShowIosWarning(true);
                   } else {
-                    // Không có luồng truyền tải nào (bấm dấu X, hoặc vào Downloads bấm tạm dừng/hủy):
-                    // -> Tuyệt đối ẩn khung màu cam ngay lập tức!
+                    // Nếu chưa bấm hoặc đã hủy popup (bấm X)
                     setShowIosWarning(false);
                   }
 
-                  // Khi đã hoàn tất 100%:
+                  // Khi tải hoàn tất 100%
                   if (data.isCompleted) {
                     setShowIosWarning(false);
                     clearStatusPolling();
+                    setDownloadProgressText(t('downloadCompleted'));
+                    setTimeout(() => setDownloadProgressText(''), 3000);
                   }
                 }
               } catch {
-                // Bỏ qua lỗi tạm thời khi polling
+                // bỏ qua lỗi mạng tạm thời khi polling
               }
             }, 800);
 
-            // Giới hạn an toàn dọn dẹp sau 15 phút
             setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
           } else if (isAndroid) {
-            // RIÊNG ANDROID: Chỉ hiện Toast ở lần tải đầu tiên của bài này
             const mediaKey = media.id || media.url;
             const hasDownloadedBefore = downloadedAudioIdsRef.current.has(mediaKey);
-
             if (!hasDownloadedBefore) {
               showToast(t('toastDownloadingAndroid'));
               downloadedAudioIdsRef.current.add(mediaKey);
             }
-            // Nếu đã tải rồi (hasDownloadedBefore === true), bỏ qua không bật Toast
-            // để nhường chỗ cho popup "Tải tệp xuống lần nữa?" của Chrome
           }
         }
 
@@ -403,20 +399,26 @@ export default function App() {
           url: audioUrl,
           fallbackUrl: audioUrl,
           videoFallback: videoFallbackUrl,
-          downloadToken: token, // Truyền token lên server
+          downloadToken: token,
           postUrl: media.url,
           mediaType: 'audio',
           filename: pathData.filename,
         });
 
         const downloadUrl = `/api/tiktok/download?${audioParams.toString()}`;
-        setDownloadProgressText(t('loadingAudio'));
+
+        // Đối với iOS: không gán trước 'Đã tải xong' để tránh hiện đè trước khi người dùng bấm xác nhận
+        if (!isIOS) {
+          setDownloadProgressText(t('loadingAudio'));
+        }
 
         triggerNativeBrowserDownload(downloadUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
 
-        setDownloadProgressText(t('downloadCompleted'));
-        setTimeout(() => setDownloadProgressText(''), 2500);
+        if (!isIOS) {
+          setDownloadProgressText(t('downloadCompleted'));
+          setTimeout(() => setDownloadProgressText(''), 2500);
+        }
       } else if (type === 'photos_zip') {
         const items = media.images.map((imgUrl, idx) => {
           const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: idx + 1 });
