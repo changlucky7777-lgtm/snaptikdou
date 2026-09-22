@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Play, Download, Music, Eye, Heart, MessageCircle, Share2, 
-  ChevronLeft, ChevronRight, AlertCircle, Pause, Play as ResumeIcon, X, Film
+  ChevronLeft, ChevronRight, Pause, Play as ResumeIcon, X, Film
 } from 'lucide-react';
 import { TikTokMediaItem } from '../types';
 
@@ -21,7 +21,7 @@ interface MediaResultCardProps {
   downloadProgressText: string;
   directDownloadInfo: { url: string; filename: string } | null;
   onDirectDownload: () => void;
-  showIosWarning: boolean;
+  showIosWarning?: boolean;
   theme?: string;
 }
 
@@ -53,12 +53,10 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   downloadProgressText,
   directDownloadInfo,
   onDirectDownload,
-  showIosWarning,
 }) => {
   const { t } = useTranslation();
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const isMobileDevice = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const isPhotos = media.mediaType === 'photos' && media.images?.length > 0;
   const totalSlides = isPhotos ? media.images.length : 0;
@@ -225,26 +223,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               )}
             </div>
           </div>
-
-          {/* DÒNG THÔNG BÁO CHO THIẾT BỊ DI ĐỘNG (CHỈ HIỂN THỊ TRÊN ANDROID / IOS) */}
-          {isMobileDevice && (
-            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
-              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-              <p className="leading-relaxed font-medium">
-                {t('keepScreenOnNoticeAndroid') || 'Không tắt hoặc thoát màn hình giao diện trước khi quá trình tải về hoàn tất.'}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Dòng cảnh báo dành riêng cho iOS (chỉ hiện khi nhận tín hiệu nhấn "Tải về" qua showIosWarning) */}
-      {showIosWarning && (
-        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
-          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="leading-relaxed font-medium">
-            {t('keepScreenOnNotice') || 'Đang tải xuống, vui lòng không tắt hoặc thoát màn hình giao diện trước khi quá trình tải về hoàn tất.'}
-          </p>
         </div>
       )}
 
