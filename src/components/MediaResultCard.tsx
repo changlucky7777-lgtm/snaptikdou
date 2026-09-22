@@ -58,6 +58,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   const { t } = useTranslation();
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const isMobileDevice = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const isPhotos = media.mediaType === 'photos' && media.images?.length > 0;
   const totalSlides = isPhotos ? media.images.length : 0;
@@ -225,8 +226,8 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             </div>
           </div>
 
-          {/* Dòng cảnh báo màu vàng cam trên Desktop / Android */}
-          {typeof navigator !== 'undefined' && !/iPad|iPhone|iPod/.test(navigator.userAgent) && (
+          {/* DÒNG THÔNG BÁO CHO THIẾT BỊ DI ĐỘNG (CHỈ HIỂN THỊ TRÊN ANDROID / IOS) */}
+          {isMobileDevice && (
             <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <p className="leading-relaxed font-medium">

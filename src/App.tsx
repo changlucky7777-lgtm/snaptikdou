@@ -293,8 +293,14 @@ export default function App() {
         if (blob) {
           await downloadBlobSafely(blob, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, type, 'video');
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 3000);
+          const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+          if (isMobile) {
+            setDownloadProgressText(t('downloadCompleted'));
+            setTimeout(() => setDownloadProgressText(''), 3000);
+          } else {
+            // Trên Desktop: đóng thanh tiến trình ngay lập tức, không hiện "Đã tải xong!"
+            setDownloadProgressText('');
+          }
         } else {
           triggerNativeBrowserDownload(downloadUrl, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, type, 'video');
@@ -354,9 +360,8 @@ export default function App() {
           setTimeout(() => setDownloadProgressText(''), 2500);
 
         } else {
-          // NHÁNH DÀNH CHO DESKTOP (GIỮ NGUYÊN VẸN)
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 2500);
+          // NHÁNH DÀNH CHO DESKTOP: Không hiện "Đã tải xong!"
+          setDownloadProgressText('');
         }
 
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
