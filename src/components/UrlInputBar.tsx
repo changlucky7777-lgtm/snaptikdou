@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, X, Clipboard, ArrowRight } from 'lucide-react';
+import { Search, Clipboard, X, Sparkles, Loader2 } from 'lucide-react';
 
 interface UrlInputBarProps {
   url: string;
@@ -17,51 +17,49 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
   isLoading,
 }) => {
   const { t } = useTranslation();
-  const [pasteSuccess, setPasteSuccess] = useState(false);
+  const [isPasted, setIsPasted] = useState(false);
 
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
         setUrl(text);
-        setPasteSuccess(true);
-        setTimeout(() => setPasteSuccess(false), 1500);
+        setIsPasted(true);
+        setTimeout(() => setIsPasted(false), 2000);
       }
     } catch {
-      // Fallback nếu không xin được quyền truy cập clipboard
+      // ignore
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !isLoading) {
-      e.preventDefault();
+    if (e.key === 'Enter') {
       onExtract(url);
     }
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-1 space-y-3">
-      {/* Khung tìm kiếm phong cách Search Spotlight iOS */}
-      <div className="relative flex items-center bg-white/90 backdrop-blur-xl border border-black/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.06)] rounded-2xl p-1.5 transition-all focus-within:ring-2 focus-within:ring-[#007AFF]/40 focus-within:border-[#007AFF]">
-        <div className="pl-3 pr-2 text-zinc-400 flex items-center pointer-events-none">
-          <Search className="w-4 h-4 text-zinc-400 stroke-[2.2]" />
+    <div className="w-full max-w-2xl mx-auto space-y-3 px-2">
+      {/* Search Input Box dạng Safari Pill */}
+      <div className="relative flex items-center bg-white/90 backdrop-blur-md rounded-2xl p-1.5 shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-black/[0.08] focus-within:border-[#007AFF] focus-within:ring-2 focus-within:ring-[#007AFF]/20 transition-all">
+        <div className="pl-3 pr-2 text-[#8E8E93]">
+          <Search className="w-5 h-5" />
         </div>
-
+        
         <input
           type="text"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t('inputPlaceholder')}
-          className="w-full bg-transparent py-2.5 text-[14px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+          className="w-full bg-transparent text-sm sm:text-base text-[#1C1C1E] placeholder:text-[#8E8E93] focus:outline-none py-2"
         />
 
         {url ? (
           <button
             type="button"
             onClick={() => setUrl('')}
-            className="p-1.5 mr-1 text-zinc-400 hover:text-zinc-600 rounded-full hover:bg-zinc-100 transition"
-            title="Clear"
+            className="p-1.5 text-[#8E8E93] hover:text-[#1C1C1E] rounded-full transition-colors cursor-pointer mr-1"
           >
             <X className="w-4 h-4" />
           </button>
@@ -69,30 +67,35 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
           <button
             type="button"
             onClick={handlePaste}
-            className="flex items-center gap-1 mr-1 px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200/80 text-zinc-700 text-xs font-semibold tracking-tight transition"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#F2F2F7] hover:bg-[#E5E5EA] text-[#1C1C1E] text-xs font-semibold transition-all cursor-pointer mr-1"
           >
-            <Clipboard className="w-3.5 h-3.5" />
-            <span>{pasteSuccess ? t('pasted') : t('btnPaste')}</span>
+            <Clipboard className="w-3.5 h-3.5 text-[#8E8E93]" />
+            <span>{isPasted ? t('pasted') : t('btnPaste')}</span>
           </button>
         )}
+      </div>
 
-        {/* Nút Lấy link màu đen sâu hoặc xanh Apple */}
+      {/* Primary Action Button: Nút đen than sang trọng chuẩn Apple */}
+      <div className="flex justify-center">
         <button
           type="button"
           onClick={() => onExtract(url)}
-          disabled={isLoading}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold tracking-tight text-white transition-all shadow-sm ${
-            isLoading
-              ? 'bg-zinc-400 cursor-not-allowed'
-              : 'bg-[#1C1C1E] hover:bg-black active:scale-[0.96]'
+          disabled={isLoading || !url.trim()}
+          className={`flex items-center justify-center gap-2 px-8 py-3 rounded-full text-sm font-semibold transition-all cursor-pointer shadow-sm ${
+            isLoading || !url.trim()
+              ? 'bg-[#E5E5EA] text-[#8E8E93] cursor-not-allowed'
+              : 'bg-[#1C1C1E] text-white hover:bg-black active:scale-[0.96]'
           }`}
         >
           {isLoading ? (
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
+              <span>{t('extracting')}</span>
+            </>
           ) : (
             <>
+              <Sparkles className="w-4 h-4 text-[#007AFF]" />
               <span>{t('btnExtract')}</span>
-              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
             </>
           )}
         </button>

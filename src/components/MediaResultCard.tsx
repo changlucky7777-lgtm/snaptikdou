@@ -1,248 +1,339 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
-  Download, 
-  Music, 
-  Film, 
-  Images, 
-  ExternalLink, 
-  Heart, 
-  MessageCircle, 
-  Play, 
-  Check, 
-  Copy,
+  Play, Download, Music, Eye, Heart, MessageCircle, Share2, 
+  ChevronLeft, ChevronRight, AlertCircle, Pause, Play as ResumeIcon, X
 } from 'lucide-react';
 import { TikTokMediaItem } from '../types';
 
 interface MediaResultCardProps {
   media: TikTokMediaItem;
   onDownloadSingle: (
-    media: TikTokMediaItem,
-    type: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'photo_single',
+    media: TikTokMediaItem, 
+    type: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'photo_single', 
     photoIndex?: number
   ) => void;
   isDownloading: boolean;
-  isPaused?: boolean;
-  onPauseDownload?: () => void;
-  onResumeDownload?: () => void;
-  onCancelDownload?: () => void;
-  downloadProgressText?: string;
-  directDownloadInfo?: any;
-  onDirectDownload?: () => void;
-  showIosWarning?: boolean;
+  isPaused: boolean;
+  onPauseDownload: () => void;
+  onResumeDownload: () => void;
+  onCancelDownload: () => void;
+  downloadProgressText: string;
+  directDownloadInfo: { url: string; filename: string } | null;
+  onDirectDownload: () => void;
+  showIosWarning: boolean;
   theme?: string;
 }
+
+export const MediaResultCardSkeleton: React.FC<{ theme?: string }> = () => (
+  <div className="w-full max-w-2xl mx-auto bg-white rounded-[28px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-black/[0.04] animate-pulse space-y-4">
+    <div className="flex items-center gap-3">
+      <div className="w-12 h-12 rounded-full bg-[#E5E5EA]" />
+      <div className="space-y-2 flex-1">
+        <div className="h-4 bg-[#E5E5EA] rounded-md w-1/3" />
+        <div className="h-3 bg-[#E5E5EA] rounded-md w-1/4" />
+      </div>
+    </div>
+    <div className="h-48 bg-[#F2F2F7] rounded-2xl" />
+    <div className="grid grid-cols-2 gap-3">
+      <div className="h-14 bg-[#F2F2F7] rounded-2xl" />
+      <div className="h-14 bg-[#F2F2F7] rounded-2xl" />
+    </div>
+  </div>
+);
 
 export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   media,
   onDownloadSingle,
   isDownloading,
+  isPaused,
+  onPauseDownload,
+  onResumeDownload,
+  onCancelDownload,
   downloadProgressText,
+  directDownloadInfo,
+  onDirectDownload,
+  showIosWarning,
 }) => {
   const { t } = useTranslation();
-  const [copiedLink, setCopiedLink] = useState(false);
-  const isPhotos = media.mediaType === 'photos' || (media.images && media.images.length > 0);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(media.url);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+  const isPhotos = media.mediaType === 'photos' && media.images?.length > 0;
+  const totalSlides = isPhotos ? media.images.length : 0;
+
+  const nextSlide = () => {
+    setCurrentSlideIndex((prev) => (prev + 1) % totalSlides);
+  };
+
+  const prevSlide = () => {
+    setCurrentSlideIndex((prev) => (prev - 1 + totalSlides) % totalSlides);
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-4 animate-in fade-in duration-300">
-      {/* Khung thẻ chính - Bo góc Squircle Apple, viền mờ */}
-      <div className="bg-white/90 backdrop-blur-xl rounded-[28px] p-5 sm:p-6 border border-black/[0.06] shadow-[0_12px_40px_rgba(0,0,0,0.04)] space-y-5">
-        
-        {/* Tác giả & Thống kê */}
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
-          <div className="flex items-center gap-3">
-            <img
-              src={media.author?.avatar || '/logo.svg'}
-              alt={media.author?.nickname}
-              className="w-11 h-11 rounded-full object-cover border border-black/[0.08] shadow-2xs"
-            />
-            <div>
-              <h4 className="text-sm font-semibold text-zinc-900 leading-tight">
-                {media.author?.nickname || 'Creator'}
-              </h4>
-              <p className="text-xs text-zinc-400 font-medium mt-0.5">
-                @{media.author?.uniqueId}
-              </p>
+    <div className="w-full max-w-2xl mx-auto bg-white rounded-[28px] p-5 sm:p-7 shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-black/[0.05] space-y-5 animate-in fade-in duration-300">
+      
+      {/* Author Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <img
+            src={media.author?.avatar || '/logo.svg'}
+            alt={media.author?.nickname}
+            className="w-11 h-11 rounded-full object-cover border border-black/[0.06] shrink-0"
+          />
+          <div className="min-w-0">
+            <h4 className="font-semibold text-sm sm:text-base text-[#1C1C1E] truncate leading-tight">
+              {media.author?.nickname || 'Creator'}
+            </h4>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-xs text-[#8E8E93] truncate">@{media.author?.uniqueId}</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#F2F2F7] text-[#1C1C1E] font-medium border border-black/[0.04]">
+                {media.platform === 'douyin' ? 'Douyin' : 'TikTok'}
+              </span>
             </div>
-          </div>
-
-          <div className="flex items-center gap-3 text-xs text-zinc-500 font-medium">
-            <span className="flex items-center gap-1">
-              <Heart className="w-3.5 h-3.5 text-zinc-400 stroke-[2.2]" />
-              {media.stats.likes ? Number(media.stats.likes).toLocaleString() : '0'}
-            </span>
-            <span className="flex items-center gap-1">
-              <MessageCircle className="w-3.5 h-3.5 text-zinc-400 stroke-[2.2]" />
-              {media.stats.comments ? Number(media.stats.comments).toLocaleString() : '0'}
-            </span>
           </div>
         </div>
 
-        {/* Nội dung Caption */}
-        {media.title && (
-          <p className="text-xs sm:text-[13px] text-zinc-700 leading-relaxed font-normal">
-            {media.title}
-          </p>
-        )}
+        {/* Stats Pill */}
+        <div className="hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full bg-[#F2F2F7] text-[11px] font-medium text-[#8E8E93] border border-black/[0.04]">
+          <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5 text-[#1C1C1E]" /> {media.stats?.plays?.toLocaleString() || 0}</span>
+          <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5 text-rose-500" /> {media.stats?.likes?.toLocaleString() || 0}</span>
+          <span className="flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5 text-[#1C1C1E]" /> {media.stats?.comments?.toLocaleString() || 0}</span>
+          <span className="flex items-center gap-1"><Share2 className="w-3.5 h-3.5 text-[#1C1C1E]" /> {media.stats?.shares?.toLocaleString() || 0}</span>
+        </div>
+      </div>
 
-        {/* Khung Ảnh bìa / Xem trước */}
-        <div className="relative w-full aspect-video sm:aspect-21/9 rounded-2xl overflow-hidden bg-zinc-100 border border-black/[0.04] flex items-center justify-center">
-          <img
-            src={media.cover || (media.images && media.images[0]) || '/logo.svg'}
-            alt="Preview"
-            className="w-full h-full object-cover"
-          />
-          {media.mediaType === 'video' && (
-            <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-              <div className="w-12 h-12 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center text-zinc-900 shadow-md">
-                <Play className="w-5 h-5 ml-0.5 fill-current" />
+      {/* Main Content Preview */}
+      <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+        {/* Left: Media Viewport */}
+        <div className="sm:col-span-5 relative rounded-2xl overflow-hidden bg-black/5 aspect-[3/4] flex items-center justify-center border border-black/[0.06] group">
+          {isPhotos ? (
+            <>
+              <img
+                src={media.images[currentSlideIndex]}
+                alt={`Slide ${currentSlideIndex + 1}`}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute top-2 right-2 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[11px] font-medium">
+                {currentSlideIndex + 1} / {totalSlides}
               </div>
-            </div>
+              {totalSlides > 1 && (
+                <>
+                  <button
+                    onClick={prevSlide}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-md text-[#1C1C1E] shadow-sm hover:bg-white active:scale-95 transition-all"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={nextSlide}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-md text-[#1C1C1E] shadow-sm hover:bg-white active:scale-95 transition-all"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <img
+                src={media.cover || '/logo.svg'}
+                alt="Video Cover"
+                className="w-full h-full object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => setIsPreviewOpen(true)}
+                className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center text-[#1C1C1E] shadow-lg active:scale-95 hover:bg-white transition-all cursor-pointer"
+              >
+                <Play className="w-5 h-5 ml-0.5 fill-[#1C1C1E]" />
+              </button>
+            </>
           )}
         </div>
 
-        {/* Danh sách nút tùy chọn theo cụm Inset Grouped của iOS */}
-        <div className="space-y-2 pt-1">
-          <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider px-1">
-            {t('downloadOptions')}
+        {/* Right: Caption & Sound Details */}
+        <div className="sm:col-span-7 flex flex-col justify-between space-y-3">
+          <div className="space-y-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#8E8E93]">
+              {t('postCaption')}
+            </span>
+            <p className="text-xs sm:text-sm text-[#1C1C1E] leading-relaxed line-clamp-4 select-text">
+              {media.title || 'No description available'}
+            </p>
           </div>
 
-          <div className="bg-[#F2F2F7] rounded-2xl p-1.5 space-y-1">
-            {/* Tải Video HD hoặc Bộ ảnh */}
-            {isPhotos ? (
-              <button
-                type="button"
-                onClick={() => onDownloadSingle(media, 'photos_zip')}
-                disabled={isDownloading}
-                className="w-full flex items-center justify-between p-3 rounded-xl bg-white hover:bg-zinc-50 border border-black/[0.04] shadow-2xs transition active:scale-[0.98]"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-zinc-100 text-zinc-800 flex items-center justify-center">
-                    <Images className="w-4 h-4 stroke-[2.2]" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-semibold text-zinc-900">
-                      {t('downloadPhotos')}
-                    </div>
-                    <div className="text-[11px] text-zinc-400">
-                      {media.images.length} {t('photoUnit')} (ZIP)
-                    </div>
-                  </div>
-                </div>
-                <div className="w-7 h-7 rounded-full bg-[#007AFF] text-white flex items-center justify-center shadow-xs">
-                  <Download className="w-3.5 h-3.5 stroke-[2.5]" />
-                </div>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onDownloadSingle(media, 'video_hd')}
-                disabled={isDownloading}
-                className="w-full flex items-center justify-between p-3 rounded-xl bg-white hover:bg-zinc-50 border border-black/[0.04] shadow-2xs transition active:scale-[0.98]"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-zinc-100 text-zinc-800 flex items-center justify-center">
-                    <Film className="w-4 h-4 stroke-[2.2]" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-semibold text-zinc-900">
-                      {t('downloadVideoHd')}
-                    </div>
-                    <div className="text-[11px] text-zinc-400">
-                      1080p Full HD MP4
-                    </div>
-                  </div>
-                </div>
-                <div className="w-7 h-7 rounded-full bg-[#007AFF] text-white flex items-center justify-center shadow-xs">
-                  <Download className="w-3.5 h-3.5 stroke-[2.5]" />
-                </div>
-              </button>
-            )}
-
-            {/* Tải Audio MP3 */}
-            <button
-              type="button"
-              onClick={() => onDownloadSingle(media, 'audio')}
-              disabled={isDownloading}
-              className="w-full flex items-center justify-between p-3 rounded-xl bg-white hover:bg-zinc-50 border border-black/[0.04] shadow-2xs transition active:scale-[0.98]"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-zinc-100 text-zinc-800 flex items-center justify-center">
-                  <Music className="w-4 h-4 stroke-[2.2]" />
-                </div>
-                <div className="text-left">
-                  <div className="text-xs font-semibold text-zinc-900">
-                    {t('downloadAudio')}
-                  </div>
-                  <div className="text-[11px] text-zinc-400">
-                    320kbps MP3 Audio
-                  </div>
-                </div>
-              </div>
-              <div className="w-7 h-7 rounded-full bg-zinc-100 text-zinc-700 flex items-center justify-center">
-                <Download className="w-3.5 h-3.5 stroke-[2.2]" />
-              </div>
-            </button>
+          {/* Sound / Music Info Card */}
+          <div className="p-3 rounded-2xl bg-[#F2F2F7] border border-black/[0.04] flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-white text-[#007AFF] shadow-2xs shrink-0">
+              <Music className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-[#1C1C1E] truncate">
+                {media.audio?.title || 'Original Audio'}
+              </p>
+              <p className="text-[11px] text-[#8E8E93] truncate">
+                {media.audio?.author || 'Creator'}
+              </p>
+            </div>
           </div>
-        </div>
-
-        {/* Thanh trạng thái tiến trình tải */}
-        {downloadProgressText && (
-          <div className="p-3 bg-zinc-100 rounded-xl flex items-center justify-center gap-2 text-xs font-medium text-zinc-700 animate-in fade-in">
-            <div className="w-3.5 h-3.5 border-2 border-zinc-400 border-t-[#007AFF] rounded-full animate-spin" />
-            <span>{downloadProgressText}</span>
-          </div>
-        )}
-
-        {/* Các nút phụ ở đáy card */}
-        <div className="flex items-center justify-between pt-2 text-xs">
-          <button
-            type="button"
-            onClick={handleCopyLink}
-            className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-800 transition"
-          >
-            {copiedLink ? (
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
-            )}
-            <span>{copiedLink ? t('copied') : t('copyLink')}</span>
-          </button>
-
-          <a
-            href={media.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[#007AFF] hover:underline font-medium"
-          >
-            <span>{t('openPlatform')}</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
         </div>
       </div>
+
+      {/* Progress / Status Bar */}
+      {downloadProgressText && (
+        <div className="p-3.5 rounded-2xl bg-[#F2F2F7] border border-black/[0.06] flex items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-2 h-2 rounded-full bg-[#007AFF] animate-pulse shrink-0" />
+            <span className="text-xs font-medium text-[#1C1C1E] truncate">
+              {downloadProgressText}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isDownloading && (
+              <>
+                <button
+                  onClick={isPaused ? onResumeDownload : onPauseDownload}
+                  className="p-1.5 rounded-xl bg-white text-[#1C1C1E] shadow-2xs hover:bg-slate-50 transition"
+                >
+                  {isPaused ? <ResumeIcon className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={onCancelDownload}
+                  className="p-1.5 rounded-xl bg-white text-rose-500 shadow-2xs hover:bg-rose-50 transition"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* iOS Warning Notice */}
+      {showIosWarning && (
+        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="leading-relaxed">{t('keepScreenOnNotice')}</p>
+        </div>
+      )}
+
+      {/* Direct High Speed Download Fallback Button */}
+      {directDownloadInfo && (
+        <button
+          onClick={onDirectDownload}
+          className="w-full py-2.5 px-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 text-xs font-semibold flex items-center justify-center gap-2 transition"
+        >
+          <Download className="w-4 h-4 text-amber-700" />
+          <span>{t('btnDirectDownload')}</span>
+        </button>
+      )}
+
+      {/* Inset Grouped Action Buttons (Apple Photos Style) */}
+      <div className="space-y-2 pt-2">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-[#8E8E93] block px-1">
+          {t('downloadOptions')}
+        </span>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* Action 1: Tải Video HD hoặc Tải Album ZIP */}
+          {isPhotos ? (
+            <button
+              type="button"
+              onClick={() => onDownloadSingle(media, 'photos_zip')}
+              className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F2F2F7] hover:bg-[#E5E5EA] transition-all cursor-pointer text-left active:scale-[0.96]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs">
+                  <Download className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="text-xs font-bold text-[#1C1C1E]">
+                    {t('downloadAllPhotosCount', { count: totalSlides })}
+                  </h5>
+                  <p className="text-[11px] text-[#8E8E93]">ZIP Archive</p>
+                </div>
+              </div>
+              <Download className="w-4 h-4 text-[#8E8E93]" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onDownloadSingle(media, 'video_hd')}
+              className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F2F2F7] hover:bg-[#E5E5EA] transition-all cursor-pointer text-left active:scale-[0.96]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs">
+                  <Download className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="text-xs font-bold text-[#1C1C1E]">
+                    {t('downloadVideoHd')}
+                  </h5>
+                  <p className="text-[11px] text-[#8E8E93]">MP4 1080p Original</p>
+                </div>
+              </div>
+              <Download className="w-4 h-4 text-[#8E8E93]" />
+            </button>
+          )}
+
+          {/* Action 2: Tải Audio MP3 */}
+          <button
+            type="button"
+            onClick={() => onDownloadSingle(media, 'audio')}
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F2F2F7] hover:bg-[#E5E5EA] transition-all cursor-pointer text-left active:scale-[0.96]"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs">
+                <Music className="w-5 h-5" />
+              </div>
+              <div>
+                <h5 className="text-xs font-bold text-[#1C1C1E]">
+                  {t('downloadAudio')}
+                </h5>
+                <p className="text-[11px] text-[#8E8E93]">MP3 320kbps</p>
+              </div>
+            </div>
+            <Download className="w-4 h-4 text-[#8E8E93]" />
+          </button>
+        </div>
+
+        {/* Tùy chọn tải ảnh đơn lẻ nếu là album */}
+        {isPhotos && (
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => onDownloadSingle(media, 'photo_single', currentSlideIndex)}
+              className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-[#F2F2F7] border border-black/[0.06] text-xs font-semibold text-[#1C1C1E] flex items-center justify-center gap-2 transition"
+            >
+              <Download className="w-3.5 h-3.5 text-[#007AFF]" />
+              <span>{t('btnDownloadSinglePhoto')} ({currentSlideIndex + 1})</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Video Modal Preview */}
+      {isPreviewOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-black rounded-3xl overflow-hidden shadow-2xl">
+            <button
+              onClick={() => setIsPreviewOpen(false)}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <video
+              src={media.video?.hd || media.video?.noWatermark}
+              controls
+              autoPlay
+              playsInline
+              className="w-full h-auto max-h-[80vh] object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
-export const MediaResultCardSkeleton: React.FC<{ theme?: string }> = () => (
-  <div className="w-full max-w-2xl mx-auto bg-white/70 backdrop-blur-xl rounded-[28px] p-6 border border-black/[0.04] space-y-4 animate-pulse">
-    <div className="flex items-center gap-3">
-      <div className="w-10 h-10 rounded-full bg-zinc-200" />
-      <div className="space-y-1.5">
-        <div className="w-28 h-3.5 bg-zinc-200 rounded-md" />
-        <div className="w-20 h-2.5 bg-zinc-200 rounded-md" />
-      </div>
-    </div>
-    <div className="w-full aspect-video bg-zinc-200 rounded-2xl" />
-    <div className="space-y-2">
-      <div className="w-full h-12 bg-zinc-200 rounded-xl" />
-      <div className="w-full h-12 bg-zinc-200 rounded-xl" />
-    </div>
-  </div>
-);

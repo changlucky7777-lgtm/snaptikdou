@@ -604,10 +604,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans selection:bg-[#007AFF] selection:text-white overflow-x-hidden w-full bg-[#F2F2F7] text-[#1C1C1E]">
-      {/* Header cố định ontop kính mờ chuẩn Safari iOS */}
-      <header className="fixed top-0 left-0 right-0 z-40 w-full bg-white/80 backdrop-blur-xl border-b border-black/[0.06] shadow-2xs transition-all">
-        <div className="max-w-5xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3">
-          {/* Logo thương hiệu */}
+      {/* Header chuẩn Safari Glassmorphism */}
+      <header className="fixed top-0 left-0 right-0 z-40 w-full bg-white/80 backdrop-blur-xl border-b border-black/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all">
+        <div className="max-w-6xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5">
+          {/* Cụm Logo */}
           <div 
             className="flex items-center gap-2.5 cursor-pointer select-none shrink-0"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
@@ -615,29 +615,30 @@ export default function App() {
             <img 
               src="/logo.svg" 
               alt="SnapTikDou Logo" 
-              className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-xs" 
+              className="w-7 h-7 sm:w-8 sm:h-8 object-contain" 
             />
             <div className="flex flex-col">
               <span className="text-base sm:text-lg font-bold tracking-tight text-[#1C1C1E] leading-none">
                 SnapTikDou
               </span>
-              <span className="text-[11px] font-normal text-zinc-400 hidden sm:inline mt-0.5">
+              <span className="text-[11px] font-normal text-[#8E8E93] hidden sm:inline">
                 {t('sloganSub')}
               </span>
             </div>
           </div>
 
-          {/* Nút ngôn ngữ & Nút Ủng hộ chuẩn viên thuốc iOS */}
+          {/* Cụm chức năng bên phải */}
           <div className="flex items-center gap-2 shrink-0">
             <LanguageSelector onLanguageChange={handleLanguageChange} />
             
+            {/* Nút Ủng hộ dạng Pill xám mờ iOS */}
             <button
               type="button"
               onClick={() => setIsDonateOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 border border-black/[0.04] active:scale-[0.96] transition text-xs font-semibold shadow-2xs cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#E5E5EA] hover:bg-[#D1D1D6] text-[#1C1C1E] text-xs font-semibold active:scale-[0.96] transition-all cursor-pointer"
               title={t('donateTitle')}
             >
-              <Coffee className="w-3.5 h-3.5 text-zinc-600" />
+              <Coffee className="w-3.5 h-3.5 text-[#1C1C1E]" />
               <span className="hidden sm:inline">{t('donateBtn')}</span>
             </button>
           </div>
@@ -645,14 +646,14 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-20 pb-6 sm:pb-8 space-y-8 min-w-0 overflow-hidden">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-20 pb-8 space-y-6 min-w-0">
         <div className="space-y-8 animate-in fade-in duration-200">
           {!currentMedia && (
-            <div className="text-center max-w-xl mx-auto space-y-2 pt-4">
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1C1C1E]">
+            <div className="text-center max-w-[1200px] mx-auto space-y-2 pt-4">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#1C1C1E]">
                 SnapTikDou
               </h1>
-              <p className="text-sm text-zinc-500 leading-relaxed max-w-md mx-auto">
+              <p className="text-sm sm:text-base text-[#8E8E93] max-w-xl mx-auto leading-relaxed">
                 {t('sloganSub')}
               </p>
             </div>
