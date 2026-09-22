@@ -113,9 +113,20 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 alt={`Slide ${currentSlideIndex + 1}`}
                 className="w-full h-full object-cover"
               />
-              <div className="absolute top-2 right-2 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[11px] font-medium">
+              {/* Badge số ảnh góc trên bên trái */}
+              <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[11px] font-medium shadow-xs">
                 {currentSlideIndex + 1} / {totalSlides}
               </div>
+
+              {/* NÚT TẢI ẢNH NÀY NỔI GÓC TRÊN BÊN PHẢI (CHUẨN APPLE IOS) */}
+              <button
+                type="button"
+                onClick={() => onDownloadSingle(media, 'photo_single', currentSlideIndex)}
+                className="absolute top-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md text-white shadow-md active:scale-[0.92] transition-all cursor-pointer z-10 flex items-center justify-center border border-white/10"
+                title={`${t('downloadPhotoSingle')} (${currentSlideIndex + 1})`}
+              >
+                <Download className="w-4 h-4 text-white" />
+              </button>
               {totalSlides > 1 && (
                 <>
                   <button
@@ -316,18 +327,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
           </div>
         )}
 
-        {isPhotos && (
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => onDownloadSingle(media, 'photo_single', currentSlideIndex)}
-              className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-[#F2F2F7] border border-black/[0.06] text-xs font-semibold text-[#1C1C1E] flex items-center justify-center gap-2 transition cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5 text-[#007AFF]" />
-              <span>{t('btnDownloadSinglePhoto')} ({currentSlideIndex + 1})</span>
-            </button>
-          </div>
-        )}
+
       </div>
 
       {/* Modal xem trước video tại chỗ (không nhảy tab mới) */}
