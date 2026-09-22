@@ -1,11 +1,11 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, History, ExternalLink, Sun, Moon } from 'lucide-react';
+import { Download, History, ExternalLink, Sun, Moon, Sparkles } from 'lucide-react';
 import { LanguageSelector } from './LanguageSelector';
 
 interface HeaderProps {
-  activeTab: 'download' | 'history';
-  setActiveTab: (tab: 'download' | 'history') => void;
+  activeTab: 'download' | 'chat' | 'history';
+  setActiveTab: (tab: 'download' | 'chat' | 'history') => void;
   historyCount: number;
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
@@ -70,6 +70,24 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Download className="w-4 h-4" />
             <span className="hidden md:inline">{t('tabDownload')}</span>
+          </button>
+
+          {/* Nút Gemini AI */}
+          <button
+            id="nav-tab-chat"
+            type="button"
+            onClick={() => setActiveTab('chat')}
+            className={`p-1.5 sm:px-3 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'chat'
+                ? 'bg-gradient-to-r from-pink-600 to-indigo-600 text-white shadow-md shadow-pink-600/30'
+                : theme === 'light'
+                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
+            }`}
+            title="Trò chuyện với Gemini AI"
+          >
+            <Sparkles className="w-4 h-4 text-pink-400 animate-pulse" />
+            <span>Gemini AI</span>
           </button>
 
           {/* Nút Lịch Sử */}

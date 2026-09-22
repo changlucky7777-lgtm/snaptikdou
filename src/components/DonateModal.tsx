@@ -9,7 +9,6 @@ interface DonateModalProps {
 
 export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => {
   const { t, i18n } = useTranslation();
-  
   const isVietnamese = i18n.language === 'vi' || i18n.language?.startsWith('vi-');
   const [activeTab, setActiveTab] = useState<'momo' | 'paypal'>(isVietnamese ? 'momo' : 'paypal');
 
@@ -22,7 +21,6 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
 
   if (!isOpen) return null;
 
-  // Hàm tải trực tiếp file ảnh mã QR về máy
   const handleDownloadImage = async (imgUrl: string, fileName: string) => {
     try {
       const response = await fetch(imgUrl);
@@ -36,7 +34,6 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
       document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
     } catch {
-      // Dự phòng nếu fetch lỗi thì mở thẻ a download trực tiếp
       const link = document.createElement('a');
       link.href = imgUrl;
       link.download = fileName;
@@ -48,38 +45,38 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200">
       <div 
-        className="relative w-full max-w-sm sm:max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 text-slate-800"
+        className="relative w-full max-w-sm bg-white/95 backdrop-blur-2xl rounded-[32px] p-6 shadow-2xl border border-black/[0.06] animate-in zoom-in-95 duration-200 text-zinc-900"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Nút đóng */}
+        {/* Nút đóng chuẩn iOS */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-full text-[#0b0b0b] hover:bg-slate-100 transition-colors cursor-pointer"
+          className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-500 transition cursor-pointer"
           title={t('donateClose')}
         >
-          <X className="w-5 h-5 text-[#0b0b0b]" />
+          <X className="w-4 h-4" />
         </button>
 
-        {/* Tiêu đề */}
+        {/* Tiêu đề Modal */}
         <div className="text-center mb-5">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-pink-50 text-pink-500 mb-2.5 shadow-xs">
-            <Coffee className="w-6 h-6" />
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-zinc-100 text-zinc-800 mb-2.5 shadow-2xs">
+            <Coffee className="w-6 h-6 stroke-[2]" />
           </div>
-          <h3 className="text-base font-bold text-slate-900">{t('donateTitle')}</h3>
-          <p className="text-xs text-black mt-1 px-2 leading-relaxed">{t('donateDesc')}</p>
+          <h3 className="text-base font-bold text-zinc-900">{t('donateTitle')}</h3>
+          <p className="text-xs text-zinc-500 mt-1 px-2 leading-relaxed">{t('donateDesc')}</p>
         </div>
 
-        {/* Bộ chuyển Tab MoMo / PayPal */}
-        <div className="flex p-1 bg-slate-100 rounded-xl mb-4">
+        {/* Chuyển tab chuẩn iOS Segmented Control */}
+        <div className="flex p-1 bg-[#E5E5EA] rounded-xl mb-4">
           <button
             type="button"
             onClick={() => setActiveTab('momo')}
             className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
               activeTab === 'momo'
-                ? 'bg-white text-[#e914a2] shadow-xs'
-                : 'text-[#e914a2] hover:opacity-80'
+                ? 'bg-white text-zinc-900 shadow-xs'
+                : 'text-zinc-500 hover:text-zinc-800'
             }`}
           >
             {t('donateTabMomo')}
@@ -89,8 +86,8 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
             onClick={() => setActiveTab('paypal')}
             className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
               activeTab === 'paypal'
-                ? 'bg-white text-[#002bff] shadow-xs'
-                : 'text-[#002bff] hover:opacity-80'
+                ? 'bg-white text-zinc-900 shadow-xs'
+                : 'text-zinc-500 hover:text-zinc-800'
             }`}
           >
             {t('donateTabPaypal')}
@@ -100,23 +97,23 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
         {/* Tab MoMo */}
         {activeTab === 'momo' ? (
           <div className="flex flex-col items-center animate-in fade-in duration-200">
-            <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 shadow-inner mb-3 flex items-center justify-center">
+            <div className="p-3 bg-zinc-100/70 rounded-2xl border border-black/[0.04] mb-3 flex items-center justify-center">
               <img
                 src="/momo-qr.png?v=4"
                 alt="MoMo QR"
-                className="w-64 sm:w-72 h-auto aspect-square rounded-xl object-contain shadow-xs"
+                className="w-64 h-auto aspect-square rounded-xl object-contain shadow-xs"
               />
             </div>
-            <p className="text-[11px] text-black font-medium mb-3">{t('donateScanMomo')}</p>
-            <div className="w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-              <span className="font-semibold text-black">NGUYEN XUAN TRUONG</span>
+            <p className="text-[11px] text-zinc-400 font-medium mb-3">{t('donateScanMomo')}</p>
+            <div className="w-full flex items-center justify-between px-3.5 py-2.5 bg-zinc-100 rounded-xl text-xs font-semibold text-zinc-800">
+              <span>NGUYEN XUAN TRUONG</span>
               <button
                 type="button"
                 onClick={() => handleDownloadImage('/momo-qr.png?v=4', 'momo-qr-snaptikdou.png')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 rounded-lg font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#007AFF] hover:bg-[#0062cc] text-white rounded-lg text-xs font-semibold transition active:scale-[0.96] cursor-pointer shadow-xs"
                 title={t('donateDownloadQR')}
               >
-                <Download className="w-4 h-4 text-emerald-600" />
+                <Download className="w-3.5 h-3.5 stroke-[2.2]" />
                 <span>{t('donateDownloadQR')}</span>
               </button>
             </div>
@@ -124,23 +121,23 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
         ) : (
           /* Tab PayPal */
           <div className="flex flex-col items-center animate-in fade-in duration-200">
-            <div className="p-3 bg-blue-50/50 rounded-2xl border border-blue-100 shadow-inner mb-3 flex items-center justify-center">
+            <div className="p-3 bg-zinc-100/70 rounded-2xl border border-black/[0.04] mb-3 flex items-center justify-center">
               <img
                 src="/paypal-qr.png?v=4"
                 alt="PayPal QR"
-                className="w-64 sm:w-72 h-auto aspect-square rounded-xl object-contain shadow-xs"
+                className="w-64 h-auto aspect-square rounded-xl object-contain shadow-xs"
               />
             </div>
-            <p className="text-[11px] text-black font-medium mb-3">{t('donateScanPaypal')}</p>
-            <div className="w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-              <span className="font-semibold text-black truncate max-w-[150px]">TRƯỜNG NGUYỄN</span>
+            <p className="text-[11px] text-zinc-400 font-medium mb-3">{t('donateScanPaypal')}</p>
+            <div className="w-full flex items-center justify-between px-3.5 py-2.5 bg-zinc-100 rounded-xl text-xs font-semibold text-zinc-800">
+              <span className="truncate max-w-[150px]">TRƯỜNG NGUYỄN</span>
               <button
                 type="button"
                 onClick={() => handleDownloadImage('/paypal-qr.png?v=4', 'paypal-qr-snaptikdou.png')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 rounded-lg font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#007AFF] hover:bg-[#0062cc] text-white rounded-lg text-xs font-semibold transition active:scale-[0.96] cursor-pointer shadow-xs"
                 title={t('donateDownloadQR')}
               >
-                <Download className="w-4 h-4 text-emerald-600" />
+                <Download className="w-3.5 h-3.5 stroke-[2.2]" />
                 <span>{t('donateDownloadQR')}</span>
               </button>
             </div>
@@ -148,8 +145,8 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
         )}
 
         <div className="mt-4 text-center">
-          <span className="inline-flex items-center gap-1 text-[11px] text-black">
-            <Heart className="w-3 h-3 text-red-400 fill-red-400" /> Thank you for your support!
+          <span className="inline-flex items-center gap-1 text-[11px] text-zinc-400 font-medium">
+            <Heart className="w-3 h-3 text-red-500 fill-red-500" /> Thank you for your support!
           </span>
         </div>
       </div>

@@ -5,7 +5,6 @@ import { DonateModal } from './components/DonateModal';
 import { LanguageSelector } from './components/LanguageSelector';
 import { UrlInputBar } from './components/UrlInputBar';
 import { MediaResultCard, MediaResultCardSkeleton } from './components/MediaResultCard';
-import { HistorySection } from './components/HistorySection';
 import { TikTokMediaItem, PathConfig, HistoryRecord } from './types';
 import { DEFAULT_PATH_CONFIG, buildFilePath } from './utils/pathBuilder';
 import { getInitialLanguage, saveLanguage, SupportedLang } from './i18n';
@@ -37,7 +36,6 @@ export default function App() {
     saveLanguage(newLang);
   };
 
-  const [activeTab, setActiveTab] = useState<'download' | 'history'>('download');
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showCookieModal, setShowCookieModal] = useState(false);
@@ -604,23 +602,15 @@ export default function App() {
     }
   };
 
-  const handleReDownload = (record: HistoryRecord) => {
-    setUrl(record.sourceUrl);
-    setActiveTab('download');
-    setDirectDownloadInfo(null);
-    handleExtract(record.sourceUrl);
-  };
-
   return (
-    <div className="min-h-screen flex flex-col font-sans selection:bg-pink-500 selection:text-white overflow-x-hidden w-full bg-slate-50 text-slate-900">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-2xs transition-all">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3">
-          
-          {/* Cụm Logo & Tên nền tảng */}
+    <div className="min-h-screen flex flex-col font-sans selection:bg-[#007AFF] selection:text-white overflow-x-hidden w-full bg-[#F2F2F7] text-[#1C1C1E]">
+      {/* Header cố định ontop kính mờ chuẩn Safari iOS */}
+      <header className="fixed top-0 left-0 right-0 z-40 w-full bg-white/80 backdrop-blur-xl border-b border-black/[0.06] shadow-2xs transition-all">
+        <div className="max-w-5xl mx-auto flex items-center justify-between px-4 sm:px-6 py-3">
+          {/* Logo thương hiệu */}
           <div 
-            className="flex items-center gap-2.5 cursor-pointer select-none shrink-0" 
-            onClick={() => setActiveTab('download')}
+            className="flex items-center gap-2.5 cursor-pointer select-none shrink-0"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           >
             <img 
               src="/logo.svg" 
@@ -628,91 +618,73 @@ export default function App() {
               className="w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow-xs" 
             />
             <div className="flex flex-col">
-              <span className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 leading-none">
+              <span className="text-base sm:text-lg font-bold tracking-tight text-[#1C1C1E] leading-none">
                 SnapTikDou
               </span>
-              <span style={{ color: '#000000' }} className="text-[11px] font-normal hidden sm:inline">
+              <span className="text-[11px] font-normal text-zinc-400 hidden sm:inline mt-0.5">
                 {t('sloganSub')}
               </span>
             </div>
           </div>
 
-          {/* Cụm chức năng bên phải */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Nút: Chọn Ngôn Ngữ */}
+          {/* Nút ngôn ngữ & Nút Ủng hộ chuẩn viên thuốc iOS */}
+          <div className="flex items-center gap-2 shrink-0">
             <LanguageSelector onLanguageChange={handleLanguageChange} />
-
-            {/* Nút Donate */}
+            
             <button
               type="button"
               onClick={() => setIsDonateOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-600 border border-pink-200 active:scale-95 transition-all text-xs font-bold shadow-2xs cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-100 hover:bg-zinc-200/80 text-zinc-900 border border-black/[0.04] active:scale-[0.96] transition text-xs font-semibold shadow-2xs cursor-pointer"
               title={t('donateTitle')}
             >
-              <Coffee className="w-3.5 h-3.5" />
+              <Coffee className="w-3.5 h-3.5 text-zinc-600" />
               <span className="hidden sm:inline">{t('donateBtn')}</span>
             </button>
           </div>
-
         </div>
       </header>
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-20 pb-6 sm:pb-8 space-y-8 min-w-0 overflow-hidden">
-        {/* TAB 1: DOWNLOADER */}
-        {activeTab === 'download' && (
-          <div className="space-y-8 animate-in fade-in duration-200">
-            {!currentMedia && (
-              <div className="text-center max-w-[1200px] mx-auto space-y-3 pt-2">
-                <h1 id="hero-heading" className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight w-full max-w-[1200px] mx-auto">
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-600 via-rose-500 to-pink-500">
-                    SnapTikDou
-                  </span>
-                </h1>
-                <p id="hero-subtitle" style={{ color: '#000000' }} className="text-[16px] leading-relaxed max-w-2xl mx-auto">
-                  {t('sloganSub')}
-                </p>
-              </div>
-            )}
+        <div className="space-y-8 animate-in fade-in duration-200">
+          {!currentMedia && (
+            <div className="text-center max-w-xl mx-auto space-y-2 pt-4">
+              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1C1C1E]">
+                SnapTikDou
+              </h1>
+              <p className="text-sm text-zinc-500 leading-relaxed max-w-md mx-auto">
+                {t('sloganSub')}
+              </p>
+            </div>
+          )}
 
-            <UrlInputBar
-              url={url}
-              setUrl={setUrl}
-              onExtract={handleExtract}
-              isLoading={isLoading}
-              theme={theme}
-            />
-
-            {isLoading ? (
-              <MediaResultCardSkeleton theme={theme} />
-            ) : currentMedia ? (
-              <MediaResultCard
-                media={currentMedia}
-                onDownloadSingle={handleDownloadSingle}
-                isDownloading={isDownloading}
-                isPaused={isPaused}
-                onPauseDownload={handlePauseDownload}
-                onResumeDownload={handleResumeDownload}
-                onCancelDownload={handleCancelDownload}
-                downloadProgressText={downloadProgressText}
-                directDownloadInfo={directDownloadInfo}
-                onDirectDownload={handleDirectDownload}
-                showIosWarning={showIosWarning}
-                theme={theme}
-              />
-            ) : null}
-          </div>
-        )}
-
-        {/* TAB 2: HISTORY */}
-        {activeTab === 'history' && (
-          <HistorySection
-            records={history}
-            onClearHistory={() => setHistory([])}
-            onReDownload={handleReDownload}
+          <UrlInputBar
+            url={url}
+            setUrl={setUrl}
+            onExtract={handleExtract}
+            isLoading={isLoading}
             theme={theme}
           />
-        )}
+
+          {isLoading ? (
+            <MediaResultCardSkeleton theme={theme} />
+          ) : currentMedia ? (
+            <MediaResultCard
+              media={currentMedia}
+              onDownloadSingle={handleDownloadSingle}
+              isDownloading={isDownloading}
+              isPaused={isPaused}
+              onPauseDownload={handlePauseDownload}
+              onResumeDownload={handleResumeDownload}
+              onCancelDownload={handleCancelDownload}
+              downloadProgressText={downloadProgressText}
+              directDownloadInfo={directDownloadInfo}
+              onDirectDownload={handleDirectDownload}
+              showIosWarning={showIosWarning}
+              theme={theme}
+            />
+          ) : null}
+        </div>
       </main>
 
       {/* Footer */}
@@ -727,7 +699,7 @@ export default function App() {
               {t('sloganSub')}
             </p>
             <div className="text-xs text-slate-500 pt-1">
-              <span>Email: </span>
+              <span style={{ color: '#000000' }}>Email: </span>
               <a href="mailto:snaptikdou@gmail.com" className="text-slate-800 hover:text-pink-600 font-medium hover:underline">
                 snaptikdou@gmail.com
               </a>

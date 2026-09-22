@@ -72,3 +72,25 @@ export interface HistoryRecord {
   sourceUrl: string;
   downloadType: 'video_hd' | 'video_sd' | 'audio' | 'photos_zip' | 'one_click_all' | 'photo_single';
 }
+
+export type ChatTaskTier = 'general' | 'complex' | 'fast';
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  content: string;
+  timestamp: number;
+  modelUsed?: string;
+  isError?: boolean;
+}
+
+export interface ChatRolePreset {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  systemInstruction: string;
+  defaultTier: ChatTaskTier;
+  starterPrompts: string[];
+}
+

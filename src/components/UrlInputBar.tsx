@@ -1,18 +1,13 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Search,
-  X,
-  Loader2,
-  Sparkles,
-} from 'lucide-react';
+import { Search, X, Clipboard, ArrowRight } from 'lucide-react';
 
 interface UrlInputBarProps {
   url: string;
   setUrl: (url: string) => void;
-  onExtract: (targetUrl?: string) => void;
+  onExtract: (url?: string) => void;
   isLoading: boolean;
-  theme?: 'dark' | 'light';
+  theme?: string;
 }
 
 export const UrlInputBar: React.FC<UrlInputBarProps> = ({
@@ -20,212 +15,88 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
   setUrl,
   onExtract,
   isLoading,
-  theme = 'dark',
 }) => {
   const { t } = useTranslation();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [isPasted, setIsPasted] = useState(false);
+  const [pasteSuccess, setPasteSuccess] = useState(false);
 
-  // Instant 1-Touch Mobile & Desktop Paste Handler
-  const handlePaste = async (e?: React.MouseEvent | React.TouchEvent) => {
-    if (e) {
-      e.stopPropagation();
-    }
-
-    // Direct window focus to ensure document activation for Clipboard API
-    if (typeof window !== 'undefined') {
-      window.focus();
-    }
-
-    const applyUrl = (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed) return false;
-
-      setUrl(trimmed); // Chỉ gán link vào ô nhập, không tự động gọi onExtract
-      setIsPasted(true);
-      setTimeout(() => setIsPasted(false), 2000);
-
-      inputRef.current?.focus();
-      return true;
-    };
-
-    // 1. Primary: Modern Clipboard API readText directly in user gesture
-    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
-      try {
-        const text = await navigator.clipboard.readText();
-        if (applyUrl(text)) {
-          return;
-        }
-      } catch (err) {
-        console.warn('Clipboard readText attempt:', err);
-      }
-    }
-
-    // 2. Secondary: Clipboard API read() with text/plain blob (iOS Safari support)
-    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.read === 'function') {
-      try {
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          if (item.types && item.types.includes('text/plain')) {
-            const blob = await item.getType('text/plain');
-            const text = await blob.text();
-            if (applyUrl(text)) {
-              return;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Clipboard read blob attempt:', err);
-      }
-    }
-
-    // 3. Fallback: execCommand paste on input
+  const handlePaste = async () => {
     try {
-      if (inputRef.current) {
-        inputRef.current.focus();
-        inputRef.current.select();
-        const success = document.execCommand('paste');
-        if (success && inputRef.current.value) {
-          if (applyUrl(inputRef.current.value)) {
-            return;
-          }
-        }
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setUrl(text);
+        setPasteSuccess(true);
+        setTimeout(() => setPasteSuccess(false), 1500);
       }
-    } catch {}
-
-    // 4. Focus input if browser strictly locks programmatic reading
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  };
-
-  // Detect native paste event directly inside input
-  const handleInputPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const pasted = e.clipboardData.getData('text');
-    if (pasted) {
-      setIsPasted(true);
-      setTimeout(() => setIsPasted(false), 2000);
+    } catch {
+      // Fallback nếu không xin được quyền truy cập clipboard
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !isLoading) {
-      onExtract();
+      e.preventDefault();
+      onExtract(url);
     }
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-3">
-      {/* Row 1: URL Input Box with distinct frame + Paste Button */}
-      <div className="w-full flex items-center gap-2 sm:gap-3">
-        {/* Input field with distinct border frame */}
-        <div
-          style={{ borderRadius: '17px' }}
-          className={`relative flex-1 flex items-center rounded-xl border transition-all duration-200 ${
-          theme === 'light'
-            ? 'bg-slate-50 border-slate-300 focus-within:border-pink-500 focus-within:ring-1 focus-within:ring-pink-500/30'
-            : 'bg-slate-950/70 border-slate-700 focus-within:border-pink-500 focus-within:ring-1 focus-within:ring-pink-500/30'
-        }`}>
-          <Search className="absolute left-3 sm:left-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
-          <input
-            ref={inputRef}
-            id="tiktok-url-input"
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onPaste={handleInputPaste}
-            onKeyDown={handleKeyDown}
-            placeholder={t('inputPlaceholder')}
-            style={{
-              height: '34px',
-              marginLeft: '0px',
-              marginRight: '0px',
-              marginTop: '0px',
-              marginBottom: '0px',
-              paddingLeft: '34px',
-              paddingRight: '34px',
-              paddingTop: '0px',
-              paddingBottom: '2px',
-              borderWidth: '0px',
-              borderRadius: '16px',
-            }}
-            className={`w-full h-[34px] m-0 pl-[34px] pr-[34px] pt-0 pb-[2px] bg-transparent text-[11px] sm:text-xs focus:outline-none focus:ring-0 ${
-              theme === 'light'
-                ? 'text-slate-900 placeholder-slate-400'
-                : 'text-white placeholder-slate-400'
-            }`}
-            disabled={isLoading}
-          />
-
-          {/* Clear button */}
-          {url && (
-            <button
-              id="btn-clear-url"
-              type="button"
-              onClick={() => {
-                setUrl('');
-                inputRef.current?.focus();
-              }}
-              className={`absolute right-2.5 w-5 h-5 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90 ${
-                theme === 'light'
-                  ? 'bg-slate-200 hover:bg-slate-300 text-slate-600'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-              }`}
-              title="Xóa link"
-            >
-              <X className="w-3 h-3 stroke-[2.5]" />
-            </button>
-          )}
+    <div className="w-full max-w-2xl mx-auto px-1 space-y-3">
+      {/* Khung tìm kiếm phong cách Search Spotlight iOS */}
+      <div className="relative flex items-center bg-white/90 backdrop-blur-xl border border-black/[0.08] shadow-[0_4px_24px_rgba(0,0,0,0.06)] rounded-2xl p-1.5 transition-all focus-within:ring-2 focus-within:ring-[#007AFF]/40 focus-within:border-[#007AFF]">
+        <div className="pl-3 pr-2 text-zinc-400 flex items-center pointer-events-none">
+          <Search className="w-4 h-4 text-zinc-400 stroke-[2.2]" />
         </div>
 
-        {/* Paste button beside the input */}
-        <button
-          id="btn-paste-url"
-          type="button"
-          onClick={handlePaste}
-          style={{ height: '34px', minWidth: '44px' }}
-          className={`flex items-center justify-center h-[34px] px-3 rounded-xl border border-solid transition-all shadow-sm touch-manipulation cursor-pointer select-none active:scale-95 shrink-0 text-xs font-semibold ${
-            theme === 'light'
-              ? 'text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border-slate-300'
-              : 'text-white bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border-slate-700 hover:border-slate-600'
-          }`}
-          title="Dán từ bộ nhớ tạm"
-        >
-          <span
-            className={`inline-flex items-center justify-center whitespace-nowrap ${
-              isPasted ? 'text-pink-500 font-bold' : (theme === 'light' ? 'text-slate-700' : 'text-slate-200')
-            }`}
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={t('inputPlaceholder')}
+          className="w-full bg-transparent py-2.5 text-[14px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+        />
+
+        {url ? (
+          <button
+            type="button"
+            onClick={() => setUrl('')}
+            className="p-1.5 mr-1 text-zinc-400 hover:text-zinc-600 rounded-full hover:bg-zinc-100 transition"
+            title="Clear"
           >
-            {isPasted ? t('pasted') : t('btnPaste')}
-          </span>
+            <X className="w-4 h-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handlePaste}
+            className="flex items-center gap-1 mr-1 px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200/80 text-zinc-700 text-xs font-semibold tracking-tight transition"
+          >
+            <Clipboard className="w-3.5 h-3.5" />
+            <span>{pasteSuccess ? t('pasted') : t('btnPaste')}</span>
+          </button>
+        )}
+
+        {/* Nút Lấy link màu đen sâu hoặc xanh Apple */}
+        <button
+          type="button"
+          onClick={() => onExtract(url)}
+          disabled={isLoading}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold tracking-tight text-white transition-all shadow-sm ${
+            isLoading
+              ? 'bg-zinc-400 cursor-not-allowed'
+              : 'bg-[#1C1C1E] hover:bg-black active:scale-[0.96]'
+          }`}
+        >
+          {isLoading ? (
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <>
+              <span>{t('btnExtract')}</span>
+              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+            </>
+          )}
         </button>
       </div>
-
-      {/* Row 2: Extract button (centered) */}
-      <button
-        id="btn-extract-tiktok"
-        type="button"
-        onClick={() => onExtract()}
-        disabled={isLoading}
-        style={{ borderRadius: '21px' }}
-        className={`px-6 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all duration-200 whitespace-nowrap shadow-md touch-manipulation min-h-[40px] mx-auto cursor-pointer ${
-          isLoading
-            ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-            : 'bg-gradient-to-r from-pink-600 via-rose-600 to-pink-500 text-white hover:from-pink-500 hover:to-rose-500 shadow-pink-600/30 hover:scale-[1.02] active:scale-[0.98]'
-        }`}
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>{t('extracting')}</span>
-          </>
-        ) : (
-          <>
-            <Sparkles className="w-4 h-4" />
-            <span>{t('btnExtract')}</span>
-          </>
-        )}
-      </button>
     </div>
   );
 };

@@ -8,6 +8,7 @@ import { createServer as createViteServer } from 'vite';
 import JSZip from 'jszip';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import ffmpeg from 'fluent-ffmpeg';
+import { GoogleGenAI } from '@google/genai';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -61,6 +62,171 @@ app.get('/api/health', (req: Request, res: Response) => {
     uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
   });
+});
+
+// =========================================================================
+// GEMINI AI INTEGRATION (Multi-turn chat, role system instructions & tiers)
+// =========================================================================
+let genAiClient: GoogleGenAI | null = null;
+
+function getGeminiClient(): GoogleGenAI {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY_MISSING');
+  }
+  if (!genAiClient) {
+    genAiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+  return genAiClient;
+}
+
+function resolveGeminiModel(requestedModel?: string, taskTier?: string): string {
+  if (requestedModel) {
+    const clean = requestedModel.replace(/^models\//, '');
+    const valid = [
+      'gemini-3.1-pro-preview',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-3.8-flash',
+    ];
+    if (valid.includes(clean)) {
+      return clean;
+    }
+  }
+
+  // Model selection by task complexity tier:
+  // - Complex tasks: gemini-3.1-pro-preview
+  // - General tasks: gemini-3.5-flash
+  // - Fast tasks: gemini-3.1-flash-lite
+  if (taskTier === 'complex') {
+    return 'gemini-3.1-pro-preview';
+  }
+  if (taskTier === 'fast') {
+    return 'gemini-3.1-flash-lite';
+  }
+  return 'gemini-3.5-flash';
+}
+
+// Available Gemini models info
+app.get('/api/gemini/models', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    models: [
+      {
+        id: 'gemini-3.5-flash',
+        name: 'Gemini 3.5 Flash',
+        tier: 'general',
+        description: 'General tasks: balanced speed, intelligence, and reasoning (Recommended)',
+        badge: 'General',
+      },
+      {
+        id: 'gemini-3.1-pro-preview',
+        name: 'Gemini 3.1 Pro Preview',
+        tier: 'complex',
+        description: 'Particularly complex tasks: deep script analysis, advanced reasoning & STEM',
+        badge: 'Complex',
+      },
+      {
+        id: 'gemini-3.1-flash-lite',
+        name: 'Gemini 3.1 Flash Lite',
+        tier: 'fast',
+        description: 'Fast tasks: ultra-low latency, quick translations & rapid brainstorming',
+        badge: 'Fast',
+      },
+      {
+        id: 'gemini-3.8-flash',
+        name: 'Gemini 3.8 Flash',
+        tier: 'general',
+        description: 'High-performance general flash model for multi-turn conversations',
+        badge: 'General',
+      },
+    ],
+  });
+});
+
+// Multi-turn Gemini Chat endpoint
+app.post('/api/gemini/chat', async (req: Request, res: Response) => {
+  try {
+    const { messages, model, taskTier, systemInstruction } = req.body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Messages list is required and must contain at least one turn.',
+      });
+      return;
+    }
+
+    const selectedModel = resolveGeminiModel(model, taskTier);
+    const ai = getGeminiClient();
+
+    // Map conversation history to GoogleGenAI contents array
+    const contents = messages.map((m: any) => ({
+      role: m.role === 'model' ? 'model' : 'user',
+      parts: [{ text: typeof m.content === 'string' ? m.content : String(m.content || '') }],
+    }));
+
+    const config: any = {};
+    if (systemInstruction && typeof systemInstruction === 'string' && systemInstruction.trim()) {
+      config.systemInstruction = systemInstruction.trim();
+    }
+
+    const response = await ai.models.generateContent({
+      model: selectedModel,
+      contents,
+      config,
+    });
+
+    const replyText = response.text || '';
+
+    res.json({
+      success: true,
+      text: replyText,
+      modelUsed: selectedModel,
+    });
+  } catch (err: any) {
+    console.error('[GEMINI CHAT ERROR]:', err);
+
+    const errMsg = err?.message || String(err);
+
+    if (
+      errMsg === 'GEMINI_API_KEY_MISSING' ||
+      errMsg.includes('API_KEY_INVALID') ||
+      errMsg.includes('PERMISSION_DENIED') ||
+      err?.status === 403 ||
+      err?.status === 401
+    ) {
+      res.status(401).json({
+        success: false,
+        error:
+          'Chưa cấu hình hoặc khóa API không hợp lệ. Vui lòng kiểm tra GEMINI_API_KEY trong mục Settings > Secrets.',
+        code: 'API_KEY_INVALID',
+      });
+      return;
+    }
+
+    if (errMsg.includes('RESOURCE_EXHAUSTED') || err?.status === 429) {
+      res.status(429).json({
+        success: false,
+        error:
+          'Đã vượt hạn mức quota (429). Nếu đang dùng gemini-3.1-pro-preview, hãy thử chuyển sang gemini-3.5-flash hoặc gemini-3.1-flash-lite, hoặc kích hoạt API key thanh toán trong Settings > Secrets.',
+        code: 'RESOURCE_EXHAUSTED',
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: errMsg || 'Lỗi khi tạo phản hồi từ Gemini AI. Vui lòng thử lại.',
+    });
+  }
 });
 
 const CLOUDFLARE_WORKER_URL =
