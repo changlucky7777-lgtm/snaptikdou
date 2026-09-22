@@ -21,11 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   const { t } = useTranslation();
 
   return (
-    <header className={`w-full sticky top-0 z-40 backdrop-blur-md border-b shadow-xl transition-colors duration-200 ${
-      theme === 'light'
-        ? 'bg-white/95 border-slate-200 text-slate-800'
-        : 'bg-slate-900/90 border-slate-800/80 text-white'
-    }`}>
+    <header className="fixed top-0 left-0 right-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-2xs transition-all">
       <div className="w-full max-w-5xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3">
         {/* Cụm Logo bên trái */}
         <div

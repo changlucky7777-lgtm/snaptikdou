@@ -614,7 +614,7 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col font-sans selection:bg-pink-500 selection:text-white overflow-x-hidden w-full bg-slate-50 text-slate-900">
       {/* Header */}
-      <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-2xs transition-all">
+      <header className="fixed top-0 left-0 right-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-2xs transition-all">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3">
           
           {/* Cụm Logo & Tên nền tảng */}
@@ -658,7 +658,7 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8 min-w-0 overflow-hidden">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-20 pb-6 sm:pb-8 space-y-8 min-w-0 overflow-hidden">
         {/* TAB 1: DOWNLOADER */}
         {activeTab === 'download' && (
           <div className="space-y-8 animate-in fade-in duration-200">
