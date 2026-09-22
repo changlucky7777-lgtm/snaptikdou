@@ -331,9 +331,8 @@ export default function App() {
         const audioUrl = media.audio?.url || '';
         const isPhotoSlide = media.mediaType === 'photos';
         const videoFallbackUrl = isPhotoSlide ? '' : (media.video?.hd || media.video?.noWatermark || '');
-
         if (!audioUrl && !videoFallbackUrl) {
-          throw new Error('Không tìm thấy nguồn âm thanh hoặc video để đổi MP3.');
+          throw new Error('Không tìm thấy nguồn âm thanh hoặc video để tải MP3.');
         }
 
         const isIOS = typeof navigator !== 'undefined' && (
@@ -342,56 +341,70 @@ export default function App() {
         );
         const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
-        // Sinh token mới cho mỗi lần bấm tải
+        // Sinh token mới cho mỗi phiên tải
         const token = `dl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-        // Dọn dẹp trạng thái cũ trước khi bắt đầu tải mới
-        clearStatusPolling();
-        setDownloadProgressText('');
+        
+        // Luôn reset cảnh báo cũ trước khi kích hoạt phiên tải mới
         setShowIosWarning(false);
+        clearStatusPolling();
 
-        if (!isPhotoSlide) {
-          if (isIOS) {
-            // Chỉ hiển thị Toast chuẩn bị, TUYỆT ĐỐI chưa bật khung màu cam
-            showToast(t('toastPreparingDownloadIOS'));
-            setShowIosWarning(false);
+        if (isIOS) {
+          // ==========================================
+          // NHÁNH RIÊNG DÀNH CHO IOS
+          // ==========================================
+          // 1. Chỉ hiện Toast chuẩn bị, KHÔNG set downloadProgressText ngay
+          setDownloadProgressText('');
+          showToast(t('toastPreparingDownloadIOS'));
 
-            statusPollingRef.current = setInterval(async () => {
-              try {
-                const res = await fetch(`/api/tiktok/check-status?token=${token}`);
-                const data = await res.json();
-                if (data) {
-                  // Chỉ khi người dùng bấm "Tải về" trên popup iOS: Safari bắt đầu kéo dữ liệu -> data.isActive = true
-                  if (data.isActive) {
-                    setToastMessage(null);
-                    setShowIosWarning(true);
-                  } else {
-                    // Nếu chưa bấm hoặc đã hủy popup (bấm X)
-                    setShowIosWarning(false);
-                  }
-
-                  // Khi tải hoàn tất 100%
-                  if (data.isCompleted) {
-                    setShowIosWarning(false);
-                    clearStatusPolling();
-                    setDownloadProgressText(t('downloadCompleted'));
-                    setTimeout(() => setDownloadProgressText(''), 3000);
-                  }
+          // 2. Chạy Polling lắng nghe sự kiện: người dùng ấn "Tải về" trên popup của iOS
+          statusPollingRef.current = setInterval(async () => {
+            try {
+              const res = await fetch(`/api/tiktok/check-status?token=${token}`);
+              const data = await res.json();
+              if (data) {
+                // CHỈ KHI NGƯỜI DÙNG ĐÃ NHẤN "TẢI VỀ" TRÊN POPUP SAFARI:
+                if (data.isActive) {
+                  setToastMessage(null); // Tắt Toast đen
+                  setShowIosWarning(true); // Bật khung cảnh báo màu cam
+                } else if (!data.isActive && !data.isCompleted) {
+                  // Người dùng ấn X hoặc hủy tải trên popup Safari
+                  setShowIosWarning(false);
                 }
-              } catch {
-                // bỏ qua lỗi mạng tạm thời khi polling
-              }
-            }, 800);
 
-            setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
-          } else if (isAndroid) {
-            const mediaKey = media.id || media.url;
-            const hasDownloadedBefore = downloadedAudioIdsRef.current.has(mediaKey);
-            if (!hasDownloadedBefore) {
-              showToast(t('toastDownloadingAndroid'));
-              downloadedAudioIdsRef.current.add(mediaKey);
+                // Khi tải hoàn tất 100%:
+                if (data.isCompleted) {
+                  setShowIosWarning(false);
+                  setDownloadProgressText(t('downloadCompleted'));
+                  clearStatusPolling();
+                  setTimeout(() => setDownloadProgressText(''), 3000);
+                }
+              }
+            } catch {
+              // Bỏ qua lỗi tạm thời khi polling
             }
+          }, 600);
+
+          setTimeout(() => clearStatusPolling(), 15 * 60 * 1000);
+
+        } else if (isAndroid) {
+          // ==========================================
+          // NHÁNH DÀNH CHO ANDROID (GIỮ NGUYÊN VẸN)
+          // ==========================================
+          const mediaKey = media.id || media.url;
+          const hasDownloadedBefore = downloadedAudioIdsRef.current.has(mediaKey);
+          if (!hasDownloadedBefore) {
+            showToast(t('toastDownloadingAndroid'));
+            downloadedAudioIdsRef.current.add(mediaKey);
           }
+          setDownloadProgressText(t('downloadCompleted'));
+          setTimeout(() => setDownloadProgressText(''), 2500);
+
+        } else {
+          // ==========================================
+          // NHÁNH DÀNH CHO DESKTOP (GIỮ NGUYÊN VẸN)
+          // ==========================================
+          setDownloadProgressText(t('downloadCompleted'));
+          setTimeout(() => setDownloadProgressText(''), 2500);
         }
 
         const pathData = buildFilePath(media, pathConfig, { mediaType: 'audio' });
@@ -404,21 +417,10 @@ export default function App() {
           mediaType: 'audio',
           filename: pathData.filename,
         });
-
         const downloadUrl = `/api/tiktok/download?${audioParams.toString()}`;
-
-        // Đối với iOS: không gán trước 'Đã tải xong' để tránh hiện đè trước khi người dùng bấm xác nhận
-        if (!isIOS) {
-          setDownloadProgressText(t('loadingAudio'));
-        }
-
+        
         triggerNativeBrowserDownload(downloadUrl, pathData.filename);
         addHistoryRecord(media, pathData.fullPath, 'audio', 'audio');
-
-        if (!isIOS) {
-          setDownloadProgressText(t('downloadCompleted'));
-          setTimeout(() => setDownloadProgressText(''), 2500);
-        }
       } else if (type === 'photos_zip') {
         const items = media.images.map((imgUrl, idx) => {
           const pathData = buildFilePath(media, pathConfig, { mediaType: 'photos', index: idx + 1 });

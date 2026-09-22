@@ -195,7 +195,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       </div>
 
-      {/* 1. THANH TIẾN TRÌNH TẢI VIDEO/SLIDE/DIRECT: Chỉ hiện khi có downloadProgressText */}
+      {/* 1. THANH TIẾN TRÌNH TẢI */}
       {downloadProgressText && (
         <div className="space-y-2 animate-in fade-in duration-200">
           <div className="p-3.5 rounded-2xl bg-[#F2F2F7] border border-black/[0.06] flex items-center justify-between gap-3">
@@ -230,8 +230,8 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             </div>
           </div>
 
-          {/* Dòng cảnh báo khi đang có tiến trình tải video */}
-          {isDownloading && (
+          {/* DÒNG THÔNG BÁO CHO DESKTOP VÀ ANDROID (chỉ hiện khi đang tải và không phải iOS) */}
+          {typeof navigator !== 'undefined' && !/iPad|iPhone|iPod/.test(navigator.userAgent) && (
             <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-center gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <p className="leading-relaxed font-medium">
@@ -242,12 +242,12 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       )}
 
-      {/* 2. CẢNH BÁO CHO IOS KHI TẢI MP3: CHỈ XUẤT HIỆN KHI NGƯỜI DÙNG ĐÃ NHẤN NÚT "TẢI VỀ" TRÊN POPUP SAFARI */}
+      {/* 2. DÒNG THÔNG BÁO DÀNH RIÊNG CHO IOS (Chỉ hiện khi nhận tín hiệu người dùng đã nhấn "Tải về" trên popup) */}
       {showIosWarning && (
-        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-900 text-xs flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <p className="leading-relaxed font-medium">
-            {t('keepScreenOnNotice') || 'Không tắt hoặc thoát màn hình giao diện trước khi quá trình tải về hoàn tất.'}
+            {t('keepScreenOnNotice') || 'Đang tải xuống, vui lòng không tắt hoặc thoát màn hình giao diện trước khi quá trình tải về hoàn tất.'}
           </p>
         </div>
       )}
