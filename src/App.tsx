@@ -611,12 +611,10 @@ export default function App() {
     handleExtract(record.sourceUrl);
   };
 
-  const historyCount = history.length;
-
   return (
     <div className="min-h-screen flex flex-col font-sans selection:bg-pink-500 selection:text-white overflow-x-hidden w-full bg-slate-50 text-slate-900">
       {/* Header */}
-      <header className="w-full bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 shadow-xs">
+      <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-2xs transition-all">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3">
           
           {/* Cụm Logo & Tên nền tảng */}
@@ -641,47 +639,10 @@ export default function App() {
 
           {/* Cụm chức năng bên phải */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Nút Tab: Tải Video */}
-            <button
-              onClick={() => setActiveTab('download')}
-              className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 ${
-                activeTab === 'download'
-                  ? 'bg-pink-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title={t('tabDownload')}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              <span className="hidden md:inline">{t('tabDownload')}</span>
-            </button>
-
-            {/* Nút Tab: Lịch Sử */}
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-1.5 relative ${
-                activeTab === 'history'
-                  ? 'bg-pink-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title={t('tabHistory')}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="hidden md:inline">{t('tabHistory')}</span>
-              {historyCount > 0 && (
-                <span className="bg-pink-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                  {historyCount}
-                </span>
-              )}
-            </button>
-
             {/* Nút: Chọn Ngôn Ngữ */}
             <LanguageSelector onLanguageChange={handleLanguageChange} />
 
-            {/* NÚT DONATE MỚI (Thay thế nút Mở tab mới) */}
+            {/* Nút Donate */}
             <button
               type="button"
               onClick={() => setIsDonateOpen(true)}
