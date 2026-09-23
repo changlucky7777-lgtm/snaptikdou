@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
-import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -20,14 +19,17 @@ import {
 import { fetchWithConnectTimeout, isValidMediaResponse } from './src/server/network';
 import { getTtwid } from './src/server/ttwidManager';
 import { mediaExtractCache } from './src/server/cacheManager';
+import {
+  extractRateLimiter,
+  downloadRateLimiter,
+  geminiRateLimiter,
+} from './src/server/rateLimiter';
 import { resolveFinalUrl, extractFromDouyin } from './src/server/services/douyinService';
 import { extractFromTikTok } from './src/server/services/tiktokService';
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
-
-// BẮT BUỘC: Đọc đúng IP người dùng thật khi chạy qua Cloudflare / Reverse Proxy
 app.set('trust proxy', 1);
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -104,7 +106,7 @@ function resolveGeminiModel(requestedModel?: string, taskTier?: string): string 
   return 'gemini-3.5-flash';
 }
 
-app.post('/api/gemini/chat', async (req: Request, res: Response) => {
+app.post('/api/gemini/chat', geminiRateLimiter, async (req: Request, res: Response) => {
   try {
     const { messages, model, taskTier, systemInstruction } = req.body;
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -129,52 +131,8 @@ app.post('/api/gemini/chat', async (req: Request, res: Response) => {
   }
 });
 
-// =========================================================================
-// CẤU HÌNH RATE LIMITING (BẢO VỆ MÁY CHỦ & BĂNG THÔNG)
-// =========================================================================
-
-// 1. Giới hạn bóc tách link: Tối đa 25 request/phút trên mỗi IP
-const extractLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 phút
-  max: 25,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    message: 'Thao tác lấy link quá nhanh. Vui lòng đợi 1 phút rồi thử lại.',
-  },
-});
-app.use('/api/tiktok/extract', extractLimiter);
-
-// 2. Giới hạn tải file / stream: Tối đa 20 lượt tải/phút trên mỗi IP
-const downloadLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 phút
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    message: 'Bạn đã đạt giới hạn tải file trong phút này. Vui lòng thử lại sau giây lát.',
-  },
-});
-app.use('/api/tiktok/download', downloadLimiter);
-app.use('/api/tiktok/bundle-zip', downloadLimiter);
-
-// 3. Giới hạn chat AI: Tối đa 15 tin nhắn/phút để bảo vệ Quota Gemini
-const geminiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 phút
-  max: 15,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    error: 'Tần suất gửi tin nhắn quá nhanh. Vui lòng chậm lại một chút.',
-  },
-});
-app.use('/api/gemini/chat', geminiLimiter);
-
 // Endpoint Extract TikTok / Douyin
-app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
+app.post('/api/tiktok/extract', extractRateLimiter, async (req: Request, res: Response) => {
   try {
     const { url } = req.body;
     if (!url || typeof url !== 'string') {
@@ -317,7 +275,7 @@ app.get('/api/tiktok/check-status', (req: Request, res: Response) => {
   return res.json({ isActive: false, isCompleted: false });
 });
 
-app.all('/api/tiktok/download', async (req: Request, res: Response) => {
+app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: Response) => {
   try {
     const rawUrl = ((req.query.url || req.body?.url) as string) || '';
     const fallbackUrl = ((req.query.fallbackUrl || req.body?.fallbackUrl) as string) || '';
@@ -388,7 +346,7 @@ app.all('/api/tiktok/download', async (req: Request, res: Response) => {
 });
 
 // Đóng gói ZIP Album ảnh
-app.post('/api/tiktok/bundle-zip', async (req: Request, res: Response) => {
+app.post('/api/tiktok/bundle-zip', downloadRateLimiter, async (req: Request, res: Response) => {
   try {
     const { items, zipName } = req.body as { items: Array<{ url: string; relativePath: string }>; zipName?: string };
     if (!Array.isArray(items) || items.length === 0) {
