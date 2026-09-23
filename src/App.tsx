@@ -571,7 +571,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setIsDonateOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-surface-secondary)] hover:bg-[var(--bg-surface-tertiary)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-semibold active:scale-[0.96] transition-all cursor-pointer shadow-2xs"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[var(--bg-surface-secondary)] hover:bg-[var(--bg-surface-tertiary)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-semibold active:scale-[0.96] transition-all cursor-pointer shadow-2xs"
               title={t('donateTitle')}
             >
               <Coffee className="w-3.5 h-3.5 text-[var(--text-primary)]" />
