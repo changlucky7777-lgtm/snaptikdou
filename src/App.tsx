@@ -117,10 +117,8 @@ export default function App() {
     setIsDownloading(false);
     setIsPaused(false);
     setShowIosWarning(false);
-    setDownloadProgressText('Đã hủy');
-    setTimeout(() => {
-      setDownloadProgressText('');
-    }, 2000);
+    // Xóa trắng ngay lập tức, không để lại chữ "Đã hủy"
+    setDownloadProgressText('');
   };
 
   const [history, setHistory] = useState<HistoryRecord[]>(() => {
@@ -475,8 +473,8 @@ export default function App() {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError' || session.isCancelled) {
-        setDownloadProgressText('Đã hủy');
-        setTimeout(() => setDownloadProgressText(''), 2000);
+        // Xóa trắng tiến trình ngay khi hủy luồng fetch
+        setDownloadProgressText('');
         return;
       }
       console.error('Download single error:', err);
@@ -523,8 +521,8 @@ export default function App() {
       setDownloadProgressText('');
     } catch (err: any) {
       if (err?.name === 'AbortError' || session.isCancelled) {
-        setDownloadProgressText('Đã hủy');
-        setTimeout(() => setDownloadProgressText(''), 2000);
+        // Xóa trắng tiến trình ngay khi hủy tải tốc độ cao
+        setDownloadProgressText('');
         return;
       }
       triggerNativeBrowserDownload(directDownloadInfo.url, directDownloadInfo.filename);
