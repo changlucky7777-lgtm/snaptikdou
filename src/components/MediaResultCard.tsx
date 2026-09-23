@@ -202,7 +202,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   type="button"
                   onClick={handleDownloadCover}
                   className="absolute bottom-2.5 right-2.5 p-2 rounded-full bg-black/70 hover:bg-black/85 backdrop-blur-md text-white shadow-sm active:scale-95 transition-all cursor-pointer z-10"
-                  title="Tải ảnh bìa (Cover HD)"
+                  title={t('downloadCover')}
                 >
                   <ImageIcon className="w-3.5 h-3.5" />
                 </button>
