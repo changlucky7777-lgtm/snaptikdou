@@ -6,7 +6,7 @@ import { pipeline } from 'stream/promises';
 import { createServer as createViteServer } from 'vite';
 import JSZip from 'jszip';
 import ffmpeg from 'fluent-ffmpeg';
-import { GoogleGenAI } from '@google/genai';
+
 import {
   TIKTOK_USER_AGENT,
   DOUYIN_USER_AGENT,
@@ -18,18 +18,16 @@ import {
 } from './src/server/constants';
 import { fetchWithConnectTimeout, isValidMediaResponse } from './src/server/network';
 import { getTtwid } from './src/server/ttwidManager';
-import { mediaExtractCache } from './src/server/cacheManager';
-import {
-  extractRateLimiter,
-  downloadRateLimiter,
-  geminiRateLimiter,
-} from './src/server/rateLimiter';
 import { resolveFinalUrl, extractFromDouyin } from './src/server/services/douyinService';
 import { extractFromTikTok } from './src/server/services/tiktokService';
+import { mediaExtractCache } from './src/server/cacheManager';
+import { extractRateLimiter, downloadRateLimiter } from './src/server/rateLimiter';
 
 const app = express();
-app.set('trust proxy', 1);
 const PORT = Number(process.env.PORT) || 3000;
+
+// Tin tưởng proxy từ Cloudflare / Nginx
+app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -81,56 +79,6 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
-// Gemini AI
-let genAiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY_MISSING');
-  if (!genAiClient) {
-    genAiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-    });
-  }
-  return genAiClient;
-}
-
-function resolveGeminiModel(requestedModel?: string, taskTier?: string): string {
-  if (requestedModel) {
-    const clean = requestedModel.replace(/^models\//, '');
-    const valid = ['gemini-3.1-pro-preview', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'];
-    if (valid.includes(clean)) return clean;
-  }
-  if (taskTier === 'complex') return 'gemini-3.1-pro-preview';
-  if (taskTier === 'fast') return 'gemini-3.1-flash-lite';
-  return 'gemini-3.5-flash';
-}
-
-app.post('/api/gemini/chat', geminiRateLimiter, async (req: Request, res: Response) => {
-  try {
-    const { messages, model, taskTier, systemInstruction } = req.body;
-    if (!Array.isArray(messages) || messages.length === 0) {
-      res.status(400).json({ success: false, error: 'Messages list is required' });
-      return;
-    }
-    const selectedModel = resolveGeminiModel(model, taskTier);
-    const ai = getGeminiClient();
-    const contents = messages.map((m: any) => ({
-      role: m.role === 'model' ? 'model' : 'user',
-      parts: [{ text: typeof m.content === 'string' ? m.content : String(m.content || '') }],
-    }));
-    const config: any = {};
-    if (systemInstruction && typeof systemInstruction === 'string' && systemInstruction.trim()) {
-      config.systemInstruction = systemInstruction.trim();
-    }
-    const response = await ai.models.generateContent({ model: selectedModel, contents, config });
-    res.json({ success: true, text: response.text || '', modelUsed: selectedModel });
-  } catch (err: any) {
-    const errMsg = err?.message || String(err);
-    res.status(500).json({ success: false, error: errMsg });
-  }
-});
-
 // Endpoint Extract TikTok / Douyin
 app.post('/api/tiktok/extract', extractRateLimiter, async (req: Request, res: Response) => {
   try {
@@ -149,7 +97,7 @@ app.post('/api/tiktok/extract', extractRateLimiter, async (req: Request, res: Re
       return;
     }
 
-    // 1. Kiểm tra nhanh Aweme ID hoặc URL trong In-Memory Cache
+    // Kiểm tra In-Memory LRU Cache
     const fastId = extractTikTokId(cleanTargetUrl) || extractTikTokId(trimmedUrl);
     const cacheKey = fastId ? `media_${fastId}` : `url_${cleanTargetUrl}`;
     const cachedData = mediaExtractCache.get(cacheKey);
@@ -164,10 +112,8 @@ app.post('/api/tiktok/extract', extractRateLimiter, async (req: Request, res: Re
     if (targetIsDouyin) {
       const douyinData = await extractFromDouyin(cleanTargetUrl || trimmedUrl, resolvedUrl);
       if (douyinData && (douyinData.video?.noWatermark || douyinData.images?.length > 0)) {
-        // Lưu cache theo cả ID và URL
         if (douyinData.id) mediaExtractCache.set(`media_${douyinData.id}`, douyinData);
         mediaExtractCache.set(`url_${cleanTargetUrl}`, douyinData);
-
         return res.json({ success: true, data: douyinData });
       }
       return res.status(422).json({
@@ -180,7 +126,6 @@ app.post('/api/tiktok/extract', extractRateLimiter, async (req: Request, res: Re
     const tiktokData = await extractFromTikTok(resolvedUrl, tiktokId);
 
     if (tiktokData) {
-      // Lưu cache kết quả TikTok
       if (tiktokData.id) mediaExtractCache.set(`media_${tiktokData.id}`, tiktokData);
       mediaExtractCache.set(`url_${cleanTargetUrl}`, tiktokData);
     }
@@ -208,13 +153,13 @@ async function fetchMediaWithRetry(
       if (ttwid) cookieHeader = `ttwid=${ttwid};`;
     } catch {}
   }
+
   const candidateUrls: string[] = [url];
-  if (options.isDouyin) {
-    if (url.includes('playwm')) {
-      const sanitized = url.replace('/playwm/', '/play/').replace(/playwm/g, 'play');
-      if (!candidateUrls.includes(sanitized)) candidateUrls.push(sanitized);
-    }
+  if (options.isDouyin && url.includes('playwm')) {
+    const sanitized = url.replace('/playwm/', '/play/').replace(/playwm/g, 'play');
+    if (!candidateUrls.includes(sanitized)) candidateUrls.push(sanitized);
   }
+
   const CONNECT_TIMEOUT = 8000;
   for (const candidate of candidateUrls) {
     const isCdnUrl = /douyinvod\.com|zjcdn\.com|byteimg\.com|snssdk\.com|ixigua\.com|pstatp\.com/i.test(candidate);
@@ -237,14 +182,16 @@ async function fetchMediaWithRetry(
 function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string, downloadToken?: string) {
   const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
   const finalFilename = `${baseName}.mp3`;
-  const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '').replace(/["\\;]/g, '').trim() || 'audio.mp3';
+  const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.mp3';
   const encodedFilename = encodeURIComponent(finalFilename);
   const isDouyin = /douyin|byteimg|zjcdn|ixigua/i.test(videoUrl);
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
+
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
+
   const ffmpegHeaders = `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`;
   const command = ffmpeg()
     .input(videoUrl)
@@ -252,6 +199,7 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
     .noVideo()
     .audioCodec('copy')
     .format('adts');
+
   setSessionActive(downloadToken, true);
   command.on('end', () => setSessionCompleted(downloadToken));
   command.on('error', (_err) => {
@@ -259,10 +207,12 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
     if (!res.headersSent) res.status(500).json({ success: false, message: 'Lỗi trích xuất audio' });
     else if (!res.writableEnded) res.end();
   });
+
   res.on('close', () => {
     try { command.kill('SIGKILL'); } catch {}
     if (!res.writableEnded) setSessionActive(downloadToken, false);
   });
+
   command.pipe(res, { end: true });
 }
 
@@ -390,5 +340,4 @@ async function startServer() {
   }
   app.listen(PORT, '0.0.0.0', () => console.log(`SnapTikDou server running on http://0.0.0.0:${PORT}`));
 }
-
 startServer();

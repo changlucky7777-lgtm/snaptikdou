@@ -25,7 +25,6 @@ export function createRateLimiter(options: RateLimiterOptions) {
   }, 2 * 60 * 1000);
 
   return (req: Request, res: Response, next: NextFunction) => {
-    // Ưu tiên đọc IP thực từ Cloudflare (cf-connecting-ip) hoặc Reverse Proxy (x-forwarded-for)
     const clientIp =
       (req.headers['cf-connecting-ip'] as string) ||
       ((req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()) ||
@@ -41,7 +40,6 @@ export function createRateLimiter(options: RateLimiterOptions) {
       ipStore.set(clientIp, record);
     }
 
-    // Lọc lại các timestamp còn nằm trong khung thời gian windowMs
     record.timestamps = record.timestamps.filter((ts) => now - ts < options.windowMs);
 
     if (record.timestamps.length >= options.maxRequests) {
@@ -69,16 +67,9 @@ export const extractRateLimiter = createRateLimiter({
   message: 'Bạn đang gửi yêu cầu quá nhanh. Vui lòng chờ 1 phút trước khi thử lại.',
 });
 
-// 2. Giới hạn tải file / stream media: 50 lượt / phút (đảm bảo album nhiều ảnh)
+// 2. Giới hạn tải file / stream media: 50 lượt / phút
 export const downloadRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 50,
   message: 'Băng thông tải đang bận do có quá nhiều tệp. Vui lòng thử lại sau giây lát.',
-});
-
-// 3. Giới hạn chat Gemini AI: 10 lượt / phút (tránh cạn kiệt quota API)
-export const geminiRateLimiter = createRateLimiter({
-  windowMs: 60 * 1000,
-  maxRequests: 10,
-  message: 'Số lượt hỏi Gemini AI vượt giới hạn. Vui lòng chờ 1 phút trước khi tiếp tục.',
 });
