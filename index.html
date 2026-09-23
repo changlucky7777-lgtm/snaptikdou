@@ -1,6 +1,23 @@
 <!doctype html>
-<html lang="vi" class="light">
+<html lang="vi">
   <head>
+    <script>
+      (function() {
+        try {
+          var savedTheme = localStorage.getItem('snaptikdou_theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = savedTheme ? savedTheme : (prefersDark ? 'dark' : 'light');
+          document.documentElement.setAttribute('data-theme', theme);
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+          }
+        } catch (e) {}
+      })();
+    </script>
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-K025342ZK3"></script>
     <script>
@@ -80,7 +97,7 @@
       }
     </script>
   </head>
-  <body class="bg-[#F2F2F7] text-[#1C1C1E] antialiased min-h-screen">
+  <body class="bg-[var(--bg-canvas)] text-[var(--text-primary)] antialiased min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

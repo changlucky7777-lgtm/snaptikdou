@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ChevronDown } from 'lucide-react';
 import { LANGUAGES, saveLanguage, SupportedLang } from '../i18n';
 
 interface LanguageSelectorProps {
@@ -38,45 +39,49 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ onLanguageCh
 
   return (
     <div className="relative inline-block text-left" ref={dropdownRef}>
-      {/* Nút bấm mở menu */}
+      {/* Nút bấm mở menu ngôn ngữ */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        style={{ borderRadius: '21px', color: '#000000' }}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[21px] border border-slate-200 bg-white hover:bg-slate-100 text-black text-xs sm:text-sm font-medium transition shadow-2xs shrink-0"
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-secondary)] text-[var(--text-primary)] text-xs sm:text-sm font-medium transition-all shadow-2xs shrink-0 cursor-pointer active:scale-[0.96]"
       >
         <img
           src={`https://flagcdn.com/w40/${currentLang.country}.png`}
           alt={currentLang.name}
-          className="w-4 h-3 object-cover rounded-xs shadow-2xs"
+          className="w-4 h-3 object-cover rounded-xs shadow-2xs shrink-0"
         />
-        <span className="hidden sm:inline">{currentLang.name}</span>
-        <svg style={{ color: '#000000' }} className="w-3.5 h-3.5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <span className="hidden sm:inline font-medium">{currentLang.name}</span>
+        <ChevronDown className="w-3.5 h-3.5 text-[var(--text-secondary)] transition-transform duration-200" />
       </button>
 
       {/* Hộp Dropdown danh sách ngôn ngữ */}
       {isOpen && (
-        <div className="absolute right-0 mt-1.5 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50 overflow-hidden">
-          {LANGUAGES.map((lang) => (
-            <button
-              key={lang.code}
-              onClick={() => {
-                handleSelectLanguage(lang.code);
-              }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs sm:text-sm text-left hover:bg-slate-50 transition text-slate-700"
-            >
-              <img
-                src={`https://flagcdn.com/w40/${lang.country}.png`}
-                alt={lang.name}
-                className="w-4 h-3 object-cover rounded-xs shrink-0"
-              />
-              <span className={`flex-1 ${i18n.language === lang.code ? 'text-pink-600 font-bold' : ''}`}>
-                {lang.name}
-              </span>
-            </button>
-          ))}
+        <div className="absolute right-0 mt-1.5 w-44 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl shadow-[var(--shadow-dropdown)] py-1.5 z-50 overflow-hidden backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+          {LANGUAGES.map((lang) => {
+            const isCurrent = i18n.language && i18n.language.startsWith(lang.code);
+            return (
+              <button
+                key={lang.code}
+                onClick={() => handleSelectLanguage(lang.code)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs sm:text-sm text-left transition-colors cursor-pointer ${
+                  isCurrent
+                    ? 'bg-[var(--accent-blue-subtle)] text-[var(--accent-blue)] font-bold'
+                    : 'text-[var(--text-primary)] hover:bg-[var(--bg-surface-secondary)]'
+                }`}
+              >
+                <img
+                  src={`https://flagcdn.com/w40/${lang.country}.png`}
+                  alt={lang.name}
+                  className="w-4 h-3 object-cover rounded-xs shrink-0"
+                />
+                <span className="flex-1 truncate">
+                  {lang.name}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

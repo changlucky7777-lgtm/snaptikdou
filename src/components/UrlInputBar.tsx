@@ -111,17 +111,17 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
     <div className="w-full max-w-2xl mx-auto space-y-3 px-2">
       {/* THANH GỢI Ý AUTO-PASTE CLIPBOARD THÔNG MINH (Chuẩn Apple Floating Capsule) */}
       {detectedLink && (
-        <div className="flex items-center justify-between gap-2 p-2 px-3.5 rounded-2xl bg-white/95 backdrop-blur-xl border border-[#007AFF]/25 shadow-[0_4px_16px_rgba(0,122,255,0.08)] animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="flex items-center justify-between gap-2 p-2 px-3.5 rounded-2xl bg-[var(--bg-surface)] backdrop-blur-xl border border-[var(--border-subtle)] shadow-[var(--shadow-card)] animate-in fade-in slide-in-from-top-2 duration-300">
           <div 
             onClick={handleApplyDetectedLink}
             className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer select-none"
           >
-            <div className="w-2 h-2 rounded-full bg-[#007AFF] animate-ping shrink-0" />
+            <div className="w-2 h-2 rounded-full bg-[var(--accent-blue)] animate-ping shrink-0" />
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-[#1C1C1E] truncate">
+              <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
                 {t('clipboardDetected')}
               </p>
-              <p className="text-[11px] text-[#8E8E93] truncate">
+              <p className="text-[11px] text-[var(--text-secondary)] truncate">
                 {detectedLink}
               </p>
             </div>
@@ -131,7 +131,7 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
             <button
               type="button"
               onClick={handleApplyDetectedLink}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#007AFF] hover:bg-[#007AFF]/90 text-white text-xs font-semibold shadow-2xs active:scale-[0.96] transition-all cursor-pointer"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--accent-blue)] hover:bg-[var(--accent-blue-hover)] text-white text-xs font-semibold shadow-2xs active:scale-[0.96] transition-all cursor-pointer"
             >
               <span>{t('btnPasteAndExtract')}</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -139,7 +139,7 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
             <button
               type="button"
               onClick={handleDismissDetectedLink}
-              className="p-1.5 rounded-full text-[#8E8E93] hover:text-[#1C1C1E] hover:bg-[#F2F2F7] transition cursor-pointer"
+              className="p-1.5 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-secondary)] transition cursor-pointer"
               title="Đóng"
             >
               <X className="w-3.5 h-3.5" />
@@ -149,8 +149,8 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
       )}
 
       {/* Ô nhập link dạng Safari Pill */}
-      <div className="relative flex items-center bg-white/90 backdrop-blur-md rounded-2xl p-1.5 shadow-[0_2px_12px_rgba(0,0,0,0.04)] border border-black/[0.08] focus-within:border-[#007AFF] focus-within:ring-2 focus-within:ring-[#007AFF]/20 transition-all">
-        <div className="pl-3 pr-2 text-[#8E8E93]">
+      <div className="relative flex items-center bg-[var(--bg-surface)] backdrop-blur-md rounded-2xl p-1.5 shadow-[var(--shadow-card)] border border-[var(--border-subtle)] focus-within:border-[var(--border-focus)] focus-within:ring-2 focus-within:ring-[var(--accent-blue)]/20 transition-all">
+        <div className="pl-3 pr-2 text-[var(--text-secondary)]">
           <Search className="w-5 h-5" />
         </div>
         
@@ -160,14 +160,14 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t('inputPlaceholder')}
-          className="w-full bg-transparent text-sm sm:text-base text-[#1C1C1E] placeholder:text-[#8E8E93] focus:outline-none py-2"
+          className="w-full bg-transparent text-sm sm:text-base text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none py-2"
         />
 
         {url ? (
           <button
             type="button"
             onClick={() => setUrl('')}
-            className="p-1.5 text-[#8E8E93] hover:text-[#1C1C1E] rounded-full transition-colors cursor-pointer mr-1"
+            className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-full transition-colors cursor-pointer mr-1"
           >
             <X className="w-4 h-4" />
           </button>
@@ -175,9 +175,9 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
           <button
             type="button"
             onClick={handlePaste}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#F2F2F7] hover:bg-[#E5E5EA] text-[#1C1C1E] text-xs font-semibold transition-all cursor-pointer mr-1"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--bg-surface-secondary)] hover:bg-[var(--bg-surface-tertiary)] text-[var(--text-primary)] text-xs font-semibold transition-all cursor-pointer mr-1"
           >
-            <Clipboard className="w-3.5 h-3.5 text-[#8E8E93]" />
+            <Clipboard className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
             <span>{isPasted ? t('pasted') : t('btnPaste')}</span>
           </button>
         )}
@@ -191,18 +191,18 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
           disabled={isLoading || !url.trim()}
           className={`flex items-center justify-center gap-2 px-8 py-3 rounded-full text-sm font-semibold transition-all cursor-pointer shadow-sm ${
             isLoading || !url.trim()
-              ? 'bg-[#E5E5EA] text-[#8E8E93] cursor-not-allowed'
-              : 'bg-[#1C1C1E] text-white hover:bg-black active:scale-[0.96]'
+              ? 'bg-[var(--bg-surface-secondary)] text-[var(--text-secondary)] opacity-60 cursor-not-allowed'
+              : 'bg-[var(--primary-btn-bg)] text-[var(--primary-btn-text)] hover:bg-[var(--primary-btn-hover)] active:scale-[0.96]'
           }`}
         >
           {isLoading ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin text-white" />
+              <Loader2 className="w-4 h-4 animate-spin text-current" />
               <span>{t('extracting')}</span>
             </>
           ) : (
             <>
-              <Sparkles className="w-4 h-4 text-[#007AFF]" />
+              <Sparkles className="w-4 h-4 text-[var(--accent-blue)]" />
               <span>{t('btnExtract')}</span>
             </>
           )}

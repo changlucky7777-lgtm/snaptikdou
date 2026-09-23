@@ -3,11 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { Coffee, X } from 'lucide-react';
 import { DonateModal } from './components/DonateModal';
 import { LanguageSelector } from './components/LanguageSelector';
+import { ThemeToggle } from './components/ThemeToggle';
 import { UrlInputBar } from './components/UrlInputBar';
 import { MediaResultCard, MediaResultCardSkeleton } from './components/MediaResultCard';
 import { TikTokMediaItem, PathConfig, HistoryRecord } from './types';
 import { DEFAULT_PATH_CONFIG, buildFilePath } from './utils/pathBuilder';
 import { getInitialLanguage, saveLanguage, SupportedLang } from './i18n';
+import { useTheme } from './utils/theme';
 import {
   streamFetchBlob,
   triggerNativeBrowserDownload,
@@ -27,6 +29,7 @@ interface DirectDownloadInfo {
 
 export default function App() {
   const { t, i18n } = useTranslation();
+  const { theme, toggleTheme } = useTheme();
   const [lang, setLang] = useState<SupportedLang>(() => getInitialLanguage());
   const handleLanguageChange = (newLang: SupportedLang) => {
     setLang(newLang);
@@ -538,9 +541,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col font-sans selection:bg-[#007AFF] selection:text-white overflow-x-hidden w-full bg-[#F2F2F7] text-[#1C1C1E]">
+    <div className="min-h-screen flex flex-col font-sans selection:bg-[#007AFF] selection:text-white overflow-x-hidden w-full bg-[var(--bg-canvas)] text-[var(--text-primary)] transition-colors duration-200">
       {/* Header cố định chuẩn Safari Navigation Bar */}
-      <header className="fixed top-0 left-0 right-0 z-40 w-full bg-white/80 backdrop-blur-xl border-b border-black/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all">
+      <header className="fixed top-0 left-0 right-0 z-40 w-full bg-[var(--bg-header)] backdrop-blur-xl border-b border-[var(--border-subtle)] shadow-[var(--shadow-header)] transition-colors duration-200">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-3 sm:px-6 py-2.5">
           <div 
             className="flex items-center gap-2.5 cursor-pointer select-none shrink-0"
@@ -552,24 +555,26 @@ export default function App() {
               className="w-7 h-7 sm:w-8 sm:h-8 object-contain" 
             />
             <div className="flex flex-col">
-              <span className="text-base sm:text-lg font-bold tracking-tight text-[#1C1C1E] leading-none">
+              <span className="text-base sm:text-lg font-bold tracking-tight text-[var(--text-primary)] leading-none">
                 SnapTikDou
               </span>
-              <span className="text-[11px] font-normal text-[#8E8E93] hidden sm:inline">
+              <span className="text-[11px] font-normal text-[var(--text-secondary)] hidden sm:inline">
                 {t('sloganSub')}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Dark / Light Mode Toggle */}
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
             <LanguageSelector onLanguageChange={handleLanguageChange} />
             <button
               type="button"
               onClick={() => setIsDonateOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#E5E5EA] hover:bg-[#D1D1D6] text-[#1C1C1E] text-xs font-semibold active:scale-[0.96] transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-surface-secondary)] hover:bg-[var(--bg-surface-tertiary)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-semibold active:scale-[0.96] transition-all cursor-pointer shadow-2xs"
               title={t('donateTitle')}
             >
-              <Coffee className="w-3.5 h-3.5 text-[#1C1C1E]" />
+              <Coffee className="w-3.5 h-3.5 text-[var(--text-primary)]" />
               <span className="hidden sm:inline">{t('donateBtn')}</span>
             </button>
           </div>
@@ -580,10 +585,10 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-20 pb-8 space-y-6 min-w-0">
         {!currentMedia && (
           <div className="text-center max-w-[1200px] mx-auto space-y-2 pt-4">
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#1C1C1E]">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[var(--text-primary)]">
               SnapTikDou
             </h1>
-            <p className="text-sm sm:text-base text-[#8E8E93] max-w-xl mx-auto leading-relaxed">
+            <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-xl mx-auto leading-relaxed">
               {t('sloganSub')}
             </p>
           </div>
@@ -616,31 +621,31 @@ export default function App() {
       </main>
 
       {/* Footer chuẩn iOS Minimalist */}
-      <footer className="w-full border-t border-black/[0.06] bg-white mt-16 pt-12 pb-8 px-4 text-[#8E8E93]">
+      <footer className="w-full border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] mt-16 pt-12 pb-8 px-4 text-[var(--text-secondary)] transition-colors duration-200">
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           <div className="md:col-span-2 space-y-3">
             <div className="flex items-center gap-2">
               <img src="/logo.svg" alt="SnapTikDou" className="w-7 h-7 object-contain" />
-              <span className="text-lg font-bold text-[#1C1C1E] tracking-wider uppercase">SnapTikDou</span>
+              <span className="text-lg font-bold text-[var(--text-primary)] tracking-wider uppercase">SnapTikDou</span>
             </div>
-            <p className="text-xs leading-relaxed max-w-sm text-[#8E8E93]">
+            <p className="text-xs leading-relaxed max-w-sm text-[var(--text-secondary)]">
               {t('sloganSub')}
             </p>
             <div className="text-xs pt-1">
               <span>Email: </span>
-              <a href="mailto:snaptikdou@gmail.com" className="text-[#1C1C1E] hover:text-[#007AFF] font-medium hover:underline">
+              <a href="mailto:snaptikdou@gmail.com" className="text-[var(--text-primary)] hover:text-[var(--accent-blue)] font-medium hover:underline">
                 snaptikdou@gmail.com
               </a>
             </div>
           </div>
 
           <div>
-            <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-3">
+            <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider mb-3">
               {t('footerSocial')}
             </h4>
             <ul className="space-y-2 text-xs">
               <li>
-                <a href="https://facebook.com" target="_blank" rel="noreferrer" className="hover:text-[#007AFF] transition">
+                <a href="https://facebook.com" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-blue)] transition">
                   Facebook
                 </a>
               </li>
@@ -648,62 +653,62 @@ export default function App() {
           </div>
 
           <div>
-            <h4 className="text-xs font-bold text-[#1C1C1E] uppercase tracking-wider mb-3">
+            <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider mb-3">
               {t('footerLegal')}
             </h4>
             <ul className="space-y-2.5 text-xs">
-              <li><button onClick={() => setShowTermsModal(true)} className="hover:text-[#007AFF] transition-colors text-left">{t('termsOfService')}</button></li>
-              <li><button onClick={() => setShowPrivacyModal(true)} className="hover:text-[#007AFF] transition-colors text-left">{t('privacyPolicy')}</button></li>
-              <li><button onClick={() => setShowCookieModal(true)} className="hover:text-[#007AFF] transition-colors text-left">{t('cookiePolicy')}</button></li>
-              <li><button onClick={() => setShowDisclaimerModal(true)} className="hover:text-[#007AFF] transition-colors text-left">{t('disclaimerTitle')}</button></li>
-              <li><button onClick={() => setShowDmcaModal(true)} className="hover:text-[#007AFF] transition-colors text-left">DMCA</button></li>
+              <li><button onClick={() => setShowTermsModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('termsOfService')}</button></li>
+              <li><button onClick={() => setShowPrivacyModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('privacyPolicy')}</button></li>
+              <li><button onClick={() => setShowCookieModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('cookiePolicy')}</button></li>
+              <li><button onClick={() => setShowDisclaimerModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('disclaimerTitle')}</button></li>
+              <li><button onClick={() => setShowDmcaModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">DMCA</button></li>
             </ul>
           </div>
         </div>
 
-        <div className="max-w-5xl mx-auto pt-6 border-t border-black/[0.04] text-center">
-          <p className="text-xs text-[#8E8E93]">
-            © 2026 <strong className="text-[#1C1C1E] font-semibold">SnapTikDou</strong>. All rights reserved.
+        <div className="max-w-5xl mx-auto pt-6 border-t border-[var(--border-subtle)] text-center">
+          <p className="text-xs text-[var(--text-secondary)]">
+            © 2026 <strong className="text-[var(--text-primary)] font-semibold">SnapTikDou</strong>. All rights reserved.
           </p>
         </div>
       </footer>
 
       {/* Toast chuẩn Apple Capsule HUD */}
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-black/85 text-white text-xs sm:text-sm font-medium shadow-2xl backdrop-blur-md flex items-center gap-2.5 max-w-[90vw] animate-in fade-in slide-in-from-bottom-5 duration-300 pointer-events-none">
-          <div className="w-2 h-2 rounded-full bg-[#007AFF] animate-pulse shrink-0" />
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-[var(--hud-bg)] text-white text-xs sm:text-sm font-medium shadow-2xl backdrop-blur-md flex items-center gap-2.5 max-w-[90vw] animate-in fade-in slide-in-from-bottom-5 duration-300 pointer-events-none border border-[var(--hud-border)]">
+          <div className="w-2 h-2 rounded-full bg-[var(--accent-blue)] animate-pulse shrink-0" />
           <span className="leading-snug text-center">{toastMessage}</span>
         </div>
       )}
 
-      {/* Giữ nguyên toàn bộ 5 Modal Điều khoản/Pháp lý */}
+      {/* Modal Điều khoản/Pháp lý */}
       {showTermsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xl p-4">
-          <div className="bg-white rounded-[28px] max-w-lg w-full p-6 shadow-2xl border border-black/[0.05] relative animate-in fade-in zoom-in-95 duration-200">
-            <button onClick={() => setShowTermsModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[#F2F2F7] text-[#8E8E93] hover:text-[#1C1C1E]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] backdrop-blur-xl p-4" onClick={() => setShowTermsModal(false)}>
+          <div className="bg-[var(--bg-surface)] rounded-[28px] max-w-lg w-full p-6 shadow-[var(--shadow-dropdown)] border border-[var(--border-subtle)] relative animate-in fade-in zoom-in-95 duration-200 text-[var(--text-primary)]" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowTermsModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[var(--bg-surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer">
               <X className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-[#1C1C1E]">{t('termsContent.title')}</h3>
+              <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('termsContent.title')}</h3>
             </div>
-            <p className="text-xs text-[#8E8E93] mb-4 leading-relaxed">{t('termsContent.intro')}</p>
-            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-black/[0.04] py-3 text-[#1C1C1E]">
+            <p className="text-xs text-[var(--text-secondary)] mb-4 leading-relaxed">{t('termsContent.intro')}</p>
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-[var(--border-subtle)] py-3 text-[var(--text-primary)]">
               <div>
-                <h4 className="font-semibold mb-1">{t('termsContent.sec1_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('termsContent.sec1_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('termsContent.sec1_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('termsContent.sec1_desc')}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('termsContent.sec2_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('termsContent.sec2_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('termsContent.sec2_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('termsContent.sec2_desc')}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('termsContent.sec3_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('termsContent.sec3_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('termsContent.sec3_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('termsContent.sec3_desc')}</p>
               </div>
             </div>
             <div className="mt-5 flex justify-end">
-              <button onClick={() => setShowTermsModal(false)} className="px-5 py-2 bg-[#1C1C1E] text-white font-medium text-xs rounded-full">
+              <button onClick={() => setShowTermsModal(false)} className="px-5 py-2 bg-[var(--primary-btn-bg)] text-[var(--primary-btn-text)] hover:bg-[var(--primary-btn-hover)] font-medium text-xs rounded-full cursor-pointer active:scale-[0.96]">
                 {t('btnClose')}
               </button>
             </div>
@@ -712,32 +717,32 @@ export default function App() {
       )}
 
       {showPrivacyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xl p-4">
-          <div className="bg-white rounded-[28px] max-w-lg w-full p-6 shadow-2xl border border-black/[0.05] relative animate-in fade-in zoom-in-95 duration-200">
-            <button onClick={() => setShowPrivacyModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[#F2F2F7] text-[#8E8E93] hover:text-[#1C1C1E]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] backdrop-blur-xl p-4" onClick={() => setShowPrivacyModal(false)}>
+          <div className="bg-[var(--bg-surface)] rounded-[28px] max-w-lg w-full p-6 shadow-[var(--shadow-dropdown)] border border-[var(--border-subtle)] relative animate-in fade-in zoom-in-95 duration-200 text-[var(--text-primary)]" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowPrivacyModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[var(--bg-surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer">
               <X className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-[#1C1C1E]">{t('privacyContent.title')}</h3>
+              <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('privacyContent.title')}</h3>
             </div>
-            <p className="text-xs text-[#8E8E93] mb-4 leading-relaxed">{t('privacyContent.intro')}</p>
-            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-black/[0.04] py-3 text-[#1C1C1E]">
+            <p className="text-xs text-[var(--text-secondary)] mb-4 leading-relaxed">{t('privacyContent.intro')}</p>
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-[var(--border-subtle)] py-3 text-[var(--text-primary)]">
               <div>
-                <h4 className="font-semibold mb-1">{t('privacyContent.sec1_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('privacyContent.sec1_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('privacyContent.sec1_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('privacyContent.sec1_desc')}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('privacyContent.sec2_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('privacyContent.sec2_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('privacyContent.sec2_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('privacyContent.sec2_desc')}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('privacyContent.sec3_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('privacyContent.sec3_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('privacyContent.sec3_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('privacyContent.sec3_desc')}</p>
               </div>
             </div>
             <div className="mt-5 flex justify-end">
-              <button onClick={() => setShowPrivacyModal(false)} className="px-5 py-2 bg-[#1C1C1E] text-white font-medium text-xs rounded-full">
+              <button onClick={() => setShowPrivacyModal(false)} className="px-5 py-2 bg-[var(--primary-btn-bg)] text-[var(--primary-btn-text)] hover:bg-[var(--primary-btn-hover)] font-medium text-xs rounded-full cursor-pointer active:scale-[0.96]">
                 {t('btnClose')}
               </button>
             </div>
@@ -746,32 +751,32 @@ export default function App() {
       )}
 
       {showCookieModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xl p-4">
-          <div className="bg-white rounded-[28px] max-w-lg w-full p-6 shadow-2xl border border-black/[0.05] relative animate-in fade-in zoom-in-95 duration-200">
-            <button onClick={() => setShowCookieModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[#F2F2F7] text-[#8E8E93] hover:text-[#1C1C1E]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] backdrop-blur-xl p-4" onClick={() => setShowCookieModal(false)}>
+          <div className="bg-[var(--bg-surface)] rounded-[28px] max-w-lg w-full p-6 shadow-[var(--shadow-dropdown)] border border-[var(--border-subtle)] relative animate-in fade-in zoom-in-95 duration-200 text-[var(--text-primary)]" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowCookieModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[var(--bg-surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer">
               <X className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-[#1C1C1E]">{t('cookieContent.title')}</h3>
+              <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('cookieContent.title')}</h3>
             </div>
-            <p className="text-xs text-[#8E8E93] mb-4 leading-relaxed">{t('cookieContent.intro')}</p>
-            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-black/[0.04] py-3 text-[#1C1C1E]">
+            <p className="text-xs text-[var(--text-secondary)] mb-4 leading-relaxed">{t('cookieContent.intro')}</p>
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-[var(--border-subtle)] py-3 text-[var(--text-primary)]">
               <div>
-                <h4 className="font-semibold mb-1">{t('cookieContent.sec1_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('cookieContent.sec1_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('cookieContent.sec1_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('cookieContent.sec1_desc')}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('cookieContent.sec2_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('cookieContent.sec2_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('cookieContent.sec2_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('cookieContent.sec2_desc')}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('cookieContent.sec3_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('cookieContent.sec3_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('cookieContent.sec3_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('cookieContent.sec3_desc')}</p>
               </div>
             </div>
             <div className="mt-5 flex justify-end">
-              <button onClick={() => setShowCookieModal(false)} className="px-5 py-2 bg-[#1C1C1E] text-white font-medium text-xs rounded-full">
+              <button onClick={() => setShowCookieModal(false)} className="px-5 py-2 bg-[var(--primary-btn-bg)] text-[var(--primary-btn-text)] hover:bg-[var(--primary-btn-hover)] font-medium text-xs rounded-full cursor-pointer active:scale-[0.96]">
                 {t('btnClose')}
               </button>
             </div>
@@ -780,32 +785,32 @@ export default function App() {
       )}
 
       {showDisclaimerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xl p-4">
-          <div className="bg-white rounded-[28px] max-w-lg w-full p-6 shadow-2xl border border-black/[0.05] relative animate-in fade-in zoom-in-95 duration-200">
-            <button onClick={() => setShowDisclaimerModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[#F2F2F7] text-[#8E8E93] hover:text-[#1C1C1E]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] backdrop-blur-xl p-4" onClick={() => setShowDisclaimerModal(false)}>
+          <div className="bg-[var(--bg-surface)] rounded-[28px] max-w-lg w-full p-6 shadow-[var(--shadow-dropdown)] border border-[var(--border-subtle)] relative animate-in fade-in zoom-in-95 duration-200 text-[var(--text-primary)]" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowDisclaimerModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[var(--bg-surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer">
               <X className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-[#1C1C1E]">{t('disclaimerContent.title')}</h3>
+              <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('disclaimerContent.title')}</h3>
             </div>
-            <p className="text-xs text-[#8E8E93] mb-4 leading-relaxed">{t('disclaimerContent.intro')}</p>
-            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-black/[0.04] py-3 text-[#1C1C1E]">
+            <p className="text-xs text-[var(--text-secondary)] mb-4 leading-relaxed">{t('disclaimerContent.intro')}</p>
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-[var(--border-subtle)] py-3 text-[var(--text-primary)]">
               <div>
-                <h4 className="font-semibold mb-1">{t('disclaimerContent.sec1_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('disclaimerContent.sec1_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('disclaimerContent.sec1_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('disclaimerContent.sec1_desc')}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('disclaimerContent.sec2_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('disclaimerContent.sec2_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('disclaimerContent.sec2_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('disclaimerContent.sec2_desc')}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('disclaimerContent.sec3_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('disclaimerContent.sec3_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('disclaimerContent.sec3_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('disclaimerContent.sec3_desc')}</p>
               </div>
             </div>
             <div className="mt-5 flex justify-end">
-              <button onClick={() => setShowDisclaimerModal(false)} className="px-5 py-2 bg-[#1C1C1E] text-white font-medium text-xs rounded-full">
+              <button onClick={() => setShowDisclaimerModal(false)} className="px-5 py-2 bg-[var(--primary-btn-bg)] text-[var(--primary-btn-text)] hover:bg-[var(--primary-btn-hover)] font-medium text-xs rounded-full cursor-pointer active:scale-[0.96]">
                 {t('btnClose')}
               </button>
             </div>
@@ -814,37 +819,37 @@ export default function App() {
       )}
 
       {showDmcaModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xl p-4">
-          <div className="bg-white rounded-[28px] max-w-lg w-full p-6 shadow-2xl border border-black/[0.05] relative animate-in fade-in zoom-in-95 duration-200">
-            <button onClick={() => setShowDmcaModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[#F2F2F7] text-[#8E8E93] hover:text-[#1C1C1E]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--modal-backdrop)] backdrop-blur-xl p-4" onClick={() => setShowDmcaModal(false)}>
+          <div className="bg-[var(--bg-surface)] rounded-[28px] max-w-lg w-full p-6 shadow-[var(--shadow-dropdown)] border border-[var(--border-subtle)] relative animate-in fade-in zoom-in-95 duration-200 text-[var(--text-primary)]" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowDmcaModal(false)} className="absolute top-4 right-4 p-1.5 rounded-full bg-[var(--bg-surface-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer">
               <X className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-2 mb-3">
               <img src="/logo.svg" alt="SnapTikDou Logo" className="w-6 h-6 object-contain" />
-              <h3 className="text-lg font-bold text-[#1C1C1E]">{t('dmcaContent.title')}</h3>
+              <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('dmcaContent.title')}</h3>
             </div>
-            <p className="text-xs text-[#8E8E93] mb-4 leading-relaxed">{t('dmcaContent.intro')}</p>
-            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-black/[0.04] py-3 text-[#1C1C1E]">
+            <p className="text-xs text-[var(--text-secondary)] mb-4 leading-relaxed">{t('dmcaContent.intro')}</p>
+            <div className="space-y-3.5 text-xs max-h-72 overflow-y-auto pr-2 border-y border-[var(--border-subtle)] py-3 text-[var(--text-primary)]">
               <div>
-                <h4 className="font-semibold mb-1">{t('dmcaContent.sec1_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('dmcaContent.sec1_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('dmcaContent.sec1_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('dmcaContent.sec1_desc')}</p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('dmcaContent.sec2_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('dmcaContent.sec2_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">
                   {t('dmcaContent.sec2_desc')}{' '}
-                  <a href="mailto:snaptikdou@gmail.com" className="text-[#007AFF] font-medium underline">
+                  <a href="mailto:snaptikdou@gmail.com" className="text-[var(--accent-blue)] font-medium underline">
                     snaptikdou@gmail.com
                   </a>.
                 </p>
               </div>
               <div>
-                <h4 className="font-semibold mb-1">{t('dmcaContent.sec3_title')}</h4>
-                <p className="text-[#8E8E93] leading-relaxed">{t('dmcaContent.sec3_desc')}</p>
+                <h4 className="font-semibold mb-1 text-[var(--text-primary)]">{t('dmcaContent.sec3_title')}</h4>
+                <p className="text-[var(--text-secondary)] leading-relaxed">{t('dmcaContent.sec3_desc')}</p>
               </div>
             </div>
             <div className="mt-5 flex justify-end">
-              <button onClick={() => setShowDmcaModal(false)} className="px-5 py-2 bg-[#1C1C1E] text-white font-medium text-xs rounded-full">
+              <button onClick={() => setShowDmcaModal(false)} className="px-5 py-2 bg-[var(--primary-btn-bg)] text-[var(--primary-btn-text)] hover:bg-[var(--primary-btn-hover)] font-medium text-xs rounded-full cursor-pointer active:scale-[0.96]">
                 {t('btnClose')}
               </button>
             </div>

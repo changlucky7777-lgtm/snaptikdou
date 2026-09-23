@@ -1,28 +1,114 @@
 @import "tailwindcss";
 
 :root {
-  --apple-bg: #F2F2F7;
-  --apple-card: #FFFFFF;
-  --apple-text: #1C1C1E;
-  --apple-subtext: #8E8E93;
-  --apple-blue: #007AFF;
-  --apple-gray: #E5E5EA;
+  /* Surface & Canvas - Apple Light Minimalist */
+  --bg-canvas: #F2F2F7;
+  --bg-surface: #FFFFFF;
+  --bg-surface-secondary: #F2F2F7;
+  --bg-surface-tertiary: #E5E5EA;
+  --bg-surface-hover: #E8E8ED;
+  --bg-header: rgba(255, 255, 255, 0.85);
+
+  /* Hairlines & Borders */
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-medium: rgba(0, 0, 0, 0.12);
+  --border-focus: rgba(0, 122, 255, 0.45);
+
+  /* High Legibility Typography */
+  --text-primary: #1C1C1E;
+  --text-secondary: #8E8E93;
+  --text-tertiary: #AEAEB2;
+
+  /* Dynamic Accents */
+  --accent-blue: #007AFF;
+  --accent-blue-hover: #0066D6;
+  --accent-blue-subtle: rgba(0, 122, 255, 0.08);
+
+  /* Primary Action Button */
+  --primary-btn-bg: #1C1C1E;
+  --primary-btn-text: #FFFFFF;
+  --primary-btn-hover: #000000;
+
+  /* Badges & Chips */
+  --badge-bg: #F2F2F7;
+  --badge-text: #1C1C1E;
+
+  /* Elevation */
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.04);
+  --shadow-header: 0 1px 3px rgba(0, 0, 0, 0.02);
+  --shadow-dropdown: 0 10px 30px -5px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05);
+
+  /* Overlays & HUD */
+  --hud-bg: rgba(0, 0, 0, 0.88);
+  --hud-border: rgba(255, 255, 255, 0.12);
+  --modal-backdrop: rgba(0, 0, 0, 0.45);
+
+  color-scheme: light;
+}
+
+/* True Dark Mode Theme (Low-Light Calibrated / OLED Pure Black) */
+:root[data-theme="dark"],
+.dark {
+  /* True Deep OLED Black Background for 0% backlight bleed in low light */
+  --bg-canvas: #000000;
+
+  /* Layered dark surfaces with precise mathematical elevation */
+  --bg-surface: #121215;             /* Card surface */
+  --bg-surface-secondary: #1C1C20;   /* Secondary containers, pills, inputs */
+  --bg-surface-tertiary: #27272D;    /* Hover and pressed states */
+  --bg-surface-hover: #232328;
+  --bg-header: rgba(18, 18, 21, 0.85);
+
+  /* Crisp, non-glare anti-reflection hairlines */
+  --border-subtle: rgba(255, 255, 255, 0.10);
+  --border-medium: rgba(255, 255, 255, 0.18);
+  --border-focus: rgba(10, 132, 255, 0.65);
+
+  /* Clean, high-legibility text with optical compensation */
+  --text-primary: #F5F5F7;           /* WCAG AAA crisp high contrast */
+  --text-secondary: #98989D;         /* Meets WCAG AA > 4.5:1 on dark surfaces */
+  --text-tertiary: #636366;
+
+  /* iOS High-luminance Dark Mode Accent */
+  --accent-blue: #0A84FF;
+  --accent-blue-hover: #409CFF;
+  --accent-blue-subtle: rgba(10, 132, 255, 0.18);
+
+  /* Inverted High-Contrast CTA button for effortless tap target visibility */
+  --primary-btn-bg: #F5F5F7;
+  --primary-btn-text: #000000;
+  --primary-btn-hover: #FFFFFF;
+
+  --badge-bg: #232328;
+  --badge-text: #E5E5EA;
+
+  /* Subtle rim light elevation in dark mode */
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.09);
+  --shadow-header: 0 1px 12px rgba(0, 0, 0, 0.7);
+  --shadow-dropdown: 0 14px 36px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.12);
+
+  --hud-bg: rgba(28, 28, 30, 0.95);
+  --hud-border: rgba(255, 255, 255, 0.18);
+  --modal-backdrop: rgba(0, 0, 0, 0.80);
+
+  color-scheme: dark;
 }
 
 body {
-  background-color: #F2F2F7;
-  color: #1C1C1E;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Hiệu ứng co giãn xúc giác Apple Haptic Feedback */
 button, [role="button"], a[role="button"], .cursor-pointer {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
-  transition: transform 0.15s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.15s ease-out;
+  transition: transform 0.15s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.15s ease-out, background-color 0.15s ease-out, border-color 0.15s ease-out;
 }
 
 button:active:not(:disabled), [role="button"]:active, a[role="button"]:active, .cursor-pointer:active {
@@ -33,4 +119,23 @@ button:active:not(:disabled), [role="button"]:active, a[role="button"]:active, .
 button:disabled {
   transform: none !important;
   pointer-events: none;
+}
+
+/* Scrollbar thích ứng hoàn hảo giữa Light và Dark */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
 }
