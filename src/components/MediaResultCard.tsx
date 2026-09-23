@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Play, Download, Music, Eye, Heart, MessageCircle, Share2, 
-  ChevronLeft, ChevronRight, Pause, Play as ResumeIcon, X, Film, Info, Images
+  ChevronLeft, ChevronRight, Pause, Play as ResumeIcon, X, Film, Info, Images, Image as ImageIcon
 } from 'lucide-react';
 import { TikTokMediaItem } from '../types';
 
@@ -21,7 +21,7 @@ interface MediaResultCardProps {
   downloadProgressText: string;
   directDownloadInfo: { url: string; filename: string } | null;
   onDirectDownload: () => void;
-  showIosWarning?: boolean;
+  showIosWarning: boolean;
   theme?: string;
 }
 
@@ -53,15 +53,22 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   downloadProgressText,
   directDownloadInfo,
   onDirectDownload,
+  showIosWarning,
 }) => {
   const { t } = useTranslation();
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const isMobileDevice = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+  const isMobileDevice = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isPhotos = media.mediaType === 'photos' && media.images?.length > 0;
   const totalSlides = isPhotos ? media.images.length : 0;
   const videoPreviewSrc = media.video?.hd || media.video?.noWatermark || '';
+
+  // Hàm chuyển đổi bytes sang MB dễ nhìn (Mục 2)
+  const formatSizeMb = (bytes?: number): string => {
+    if (!bytes || bytes <= 0) return '';
+    return ` • ${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const nextSlide = () => {
     setCurrentSlideIndex((prev) => (prev + 1) % totalSlides);
@@ -71,10 +78,22 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
     setCurrentSlideIndex((prev) => (prev - 1 + totalSlides) % totalSlides);
   };
 
+  // Hàm tải ảnh bìa gốc (Mục 4)
+  const handleDownloadCover = () => {
+    const coverUrl = media.cover || (isPhotos ? media.images[0] : '');
+    if (!coverUrl) return;
+    const a = document.createElement('a');
+    a.href = `/api/tiktok/download?url=${encodeURIComponent(coverUrl)}&filename=${encodeURIComponent(`@${media.author.uniqueId}_cover.jpg`)}`;
+    a.download = `@${media.author.uniqueId}_cover.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   return (
     <div className="w-full max-w-2xl mx-auto bg-white rounded-[28px] p-5 sm:p-7 shadow-[0_4px_24px_rgba(0,0,0,0.04)] border border-black/[0.05] space-y-5 animate-in fade-in duration-300">
       
-      {/* Header tác giả */}
+      {/* Tác giả & Số liệu */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <img
@@ -103,78 +122,123 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       </div>
 
-      {/* Khung xem nội dung */}
+      {/* Cụm xem nội dung */}
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-        <div className="sm:col-span-5 relative rounded-2xl overflow-hidden bg-black/5 aspect-[3/4] flex items-center justify-center border border-black/[0.06] group">
-          {isPhotos ? (
-            <>
-              <img
-                src={media.images[currentSlideIndex]}
-                alt={`Slide ${currentSlideIndex + 1}`}
-                className="w-full h-full object-cover"
-              />
-              {/* Badge số ảnh góc trên bên trái */}
-              <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[11px] font-medium shadow-xs">
-                {currentSlideIndex + 1} / {totalSlides}
-              </div>
+        {/* Bên trái: Thumbnail / Viewport & Dải Thumbnail Strip */}
+        <div className="sm:col-span-5 space-y-2">
+          <div className="relative rounded-2xl overflow-hidden bg-black/5 aspect-[3/4] flex items-center justify-center border border-black/[0.06] group">
+            {isPhotos ? (
+              <>
+                <img
+                  src={media.images[currentSlideIndex]}
+                  alt={`Slide ${currentSlideIndex + 1}`}
+                  className="w-full h-full object-cover transition-opacity duration-200"
+                />
+                
+                {/* Badge đếm số ảnh */}
+                <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[11px] font-medium shadow-xs">
+                  {currentSlideIndex + 1} / {totalSlides}
+                </div>
 
-              {/* NÚT TẢI ẢNH NÀY NỔI GÓC TRÊN BÊN PHẢI (CHUẨN APPLE IOS) */}
-              <button
-                type="button"
-                onClick={() => onDownloadSingle(media, 'photo_single', currentSlideIndex)}
-                className="absolute top-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md text-white shadow-md active:scale-[0.92] transition-all cursor-pointer z-10 flex items-center justify-center border border-white/10"
-                title={`${t('downloadPhotoSingle')} (${currentSlideIndex + 1})`}
-              >
-                <Download className="w-4 h-4 text-white" />
-              </button>
-              {totalSlides > 1 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={prevSlide}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-md text-[#1C1C1E] shadow-sm hover:bg-white active:scale-95 transition-all cursor-pointer"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={nextSlide}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-md text-[#1C1C1E] shadow-sm hover:bg-white active:scale-95 transition-all cursor-pointer"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <img
-                src={media.cover || '/logo.svg'}
-                alt="Video Cover"
-                className="w-full h-full object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => setIsPreviewOpen(true)}
-                className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center text-[#1C1C1E] shadow-lg active:scale-95 hover:bg-white transition-all cursor-pointer z-10"
-                title={t('openVideo')}
-              >
-                <Play className="w-5 h-5 ml-0.5 fill-[#1C1C1E]" />
-              </button>
+                {/* Nút tải ảnh đơn đang xem */}
+                <button
+                  type="button"
+                  onClick={() => onDownloadSingle(media, 'photo_single', currentSlideIndex)}
+                  className="absolute top-2.5 right-2.5 p-2 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md text-white shadow-md active:scale-[0.92] transition-all cursor-pointer z-10 flex items-center justify-center border border-white/10"
+                  title={`${t('downloadPhotoSingle')} (${currentSlideIndex + 1})`}
+                >
+                  <Download className="w-4 h-4 text-white" />
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setIsPreviewOpen(true)}
-                className="absolute bottom-2.5 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md text-white text-[11px] font-semibold flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer z-10 shadow-sm"
-              >
-                <Film className="w-3.5 h-3.5" />
-                <span>{t('openVideo')}</span>
-              </button>
-            </>
+                {/* Mũi tên tới / lui */}
+                {totalSlides > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={prevSlide}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-md text-[#1C1C1E] shadow-sm hover:bg-white active:scale-95 transition-all cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={nextSlide}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-white/80 backdrop-blur-md text-[#1C1C1E] shadow-sm hover:bg-white active:scale-95 transition-all cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <img
+                  src={media.cover || '/logo.svg'}
+                  alt="Video Cover"
+                  className="w-full h-full object-cover"
+                />
+                {/* Nút Play trung tâm */}
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(true)}
+                  className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center text-[#1C1C1E] shadow-lg active:scale-95 hover:bg-white transition-all cursor-pointer z-10"
+                  title={t('openVideo')}
+                >
+                  <Play className="w-5 h-5 ml-0.5 fill-[#1C1C1E]" />
+                </button>
+
+                {/* Nút nhỏ Mở video */}
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(true)}
+                  className="absolute bottom-2.5 left-2.5 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md text-white text-[11px] font-semibold flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer z-10 shadow-sm"
+                >
+                  <Film className="w-3.5 h-3.5" />
+                  <span>{t('openVideo')}</span>
+                </button>
+
+                {/* MỤC 4: Nút tải ảnh bìa gốc (Cover HD) */}
+                <button
+                  type="button"
+                  onClick={handleDownloadCover}
+                  className="absolute bottom-2.5 right-2.5 p-2 rounded-full bg-black/70 hover:bg-black/85 backdrop-blur-md text-white shadow-sm active:scale-95 transition-all cursor-pointer z-10"
+                  title="Tải ảnh bìa (Cover HD)"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* MỤC 3: Dải Thumbnail Strip cuộn ngang phong cách iOS Photos */}
+          {isPhotos && totalSlides > 1 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto py-1 px-0.5 no-scrollbar scroll-smooth">
+              {media.images.map((imgUrl, index) => {
+                const isActive = index === currentSlideIndex;
+                return (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => setCurrentSlideIndex(index)}
+                    className={`relative shrink-0 w-11 h-11 rounded-xl overflow-hidden border-2 transition-all cursor-pointer active:scale-95 ${
+                      isActive 
+                        ? 'border-[#007AFF] shadow-xs scale-105' 
+                        : 'border-transparent opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <img 
+                      src={imgUrl} 
+                      alt={`Thumbnail ${index + 1}`} 
+                      className="w-full h-full object-cover" 
+                    />
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
 
-        {/* Bên phải: Caption & Dòng âm thanh phụ */}
+        {/* Bên phải: Tiêu đề & Dòng âm thanh */}
         <div className="sm:col-span-7 flex flex-col justify-between space-y-3">
           <div className="space-y-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[#8E8E93]">
@@ -184,7 +248,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               {media.title || 'No description available'}
             </p>
 
-            {/* DÒNG TEXT ÂM THANH INLINE TINH TẾ (THAY THẾ CHO KHUNG SỐ 1 CŨ) */}
+            {/* Dòng âm thanh inline */}
             {media.audio && (
               <div className="flex items-center gap-1.5 pt-1 text-xs text-[#8E8E93]">
                 <Music className="w-3.5 h-3.5 text-[#007AFF] shrink-0" />
@@ -251,13 +315,14 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </button>
       )}
 
-      {/* Inset Grouped Action Buttons */}
+      {/* Danh sách các nút tải phương tiện */}
       <div className="space-y-2 pt-2">
         <span className="text-[11px] font-bold uppercase tracking-wider text-[#8E8E93] block px-1">
           {t('downloadOptions')}
         </span>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* Nút Video HD hoặc Nút Album ZIP (MỤC 2: Hiển thị kèm dung lượng ước tính) */}
           {isPhotos ? (
             <button
               type="button"
@@ -265,7 +330,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F2F2F7] hover:bg-[#E5E5EA] transition-all cursor-pointer text-left active:scale-[0.96]"
             >
               <div className="flex items-center gap-3">
-                {/* Ô VUÔNG TRẮNG: ĐỔI SANG ICON IMAGES */}
                 <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs shrink-0">
                   <Images className="w-5 h-5" />
                 </div>
@@ -273,7 +337,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   <h5 className="text-xs font-bold text-[#1C1C1E]">
                     {t('downloadAllPhotosCount', { count: totalSlides })}
                   </h5>
-                  <p className="text-[11px] text-[#8E8E93]">ZIP Archive</p>
+                  <p className="text-[11px] text-[#8E8E93]">
+                    ZIP Archive • {totalSlides} photos
+                  </p>
                 </div>
               </div>
               <Download className="w-4 h-4 text-[#8E8E93]" />
@@ -285,7 +351,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F2F2F7] hover:bg-[#E5E5EA] transition-all cursor-pointer text-left active:scale-[0.96]"
             >
               <div className="flex items-center gap-3">
-                {/* Ô VUÔNG TRẮNG: ĐỔI SANG ICON FILM */}
                 <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs shrink-0">
                   <Film className="w-5 h-5" />
                 </div>
@@ -293,34 +358,39 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   <h5 className="text-xs font-bold text-[#1C1C1E]">
                     {t('downloadVideoHd')}
                   </h5>
-                  <p className="text-[11px] text-[#8E8E93]">MP4 1080p Original</p>
+                  <p className="text-[11px] text-[#8E8E93]">
+                    MP4 1080p Original{formatSizeMb(media.video?.hdSize || media.video?.size)}
+                  </p>
                 </div>
               </div>
               <Download className="w-4 h-4 text-[#8E8E93]" />
             </button>
           )}
 
+          {/* Nút Tải Audio MP3 */}
           <button
             type="button"
             onClick={() => onDownloadSingle(media, 'audio')}
             className="flex items-center justify-between p-3.5 rounded-2xl bg-[#F2F2F7] hover:bg-[#E5E5EA] transition-all cursor-pointer text-left active:scale-[0.96]"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-[#007AFF] shadow-2xs shrink-0">
                 <Music className="w-5 h-5" />
               </div>
               <div>
                 <h5 className="text-xs font-bold text-[#1C1C1E]">
                   {t('downloadAudio')}
                 </h5>
-                <p className="text-[11px] text-[#8E8E93]">MP3 320kbps</p>
+                <p className="text-[11px] text-[#8E8E93]">
+                  MP3 320kbps
+                </p>
               </div>
             </div>
             <Download className="w-4 h-4 text-[#8E8E93]" />
           </button>
         </div>
 
-        {/* DÒNG CHÚ Ý CỐ ĐỊNH DÀNH RIÊNG CHO IOS & ANDROID (ẨN TRÊN DESKTOP) */}
+        {/* Dòng chú ý cố định riêng cho thiết bị di động */}
         {isMobileDevice && (
           <div className="pt-2 px-1 text-center">
             <p className="text-[11px] text-[#8E8E93] leading-relaxed flex items-center justify-center gap-1.5 font-normal">
@@ -329,11 +399,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             </p>
           </div>
         )}
-
-
       </div>
 
-      {/* Modal xem trước video tại chỗ (không nhảy tab mới) */}
+      {/* Modal xem trước video tại chỗ */}
       {isPreviewOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-200"

@@ -1,6 +1,6 @@
 {
   "name": "SnapTikDou",
-  "description": "Nền tảng tải video, audio, photo slide TikTok & Douyin (抖音) không dính Logo tích hợp trợ lý Gemini AI thông minh.",
+  "description": "Nền tảng tải video, audio, photo slide TikTok & Douyin không dính Logo.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

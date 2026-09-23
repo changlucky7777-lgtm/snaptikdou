@@ -7,7 +7,6 @@
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-
       gtag('config', 'G-K025342ZK3');
     </script>
     <script>
@@ -28,13 +27,21 @@
     </script>
     <meta charset="UTF-8" />
     <meta name="referrer" content="no-referrer" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>SnapTikDou - Tải Video, Audio, Photo slide TikTok & Douyin không dính Logo</title>
-    <meta name="description" content="Nền tảng tải video, audio, photo slide TikTok & Douyin (抖音) không dính Logo tích hợp trợ lý Gemini AI thông minh." />
+    <meta name="description" content="Nền tảng tải video, audio, photo slide TikTok & Douyin không dính Logo." />
     <meta property="og:title" content="SnapTikDou - Tải Video, Audio, Photo slide TikTok & Douyin không dính Logo" />
-    <meta property="og:description" content="Nền tảng tải video, audio, photo slide TikTok & Douyin (抖音) không dính Logo tích hợp trợ lý Gemini AI thông minh." />
+    <meta property="og:description" content="Nền tảng tải video, audio, photo slide TikTok & Douyin không dính Logo." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    
+    <!-- Cấu hình PWA & iOS Standalone App -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#F2F2F7" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="SnapTikDou" />
 
     <!-- Hreflang SEO Tags -->
     <link rel="alternate" hreflang="x-default" href="https://snaptikdou.com/" />
@@ -48,24 +55,28 @@
     <link rel="alternate" hreflang="id" href="https://snaptikdou.com/?lang=id" />
     <link rel="alternate" hreflang="ru" href="https://snaptikdou.com/?lang=ru" />
 
-    <!-- Favicon chuẩn cho Google Search (PNG 48x48 trở lên) -->
+    <!-- Favicon & Icons -->
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
     <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    
-    <!-- Dành cho thiết bị di động / Apple Touch -->
     <link rel="apple-touch-icon" sizes="180x180" href="/logo-512.png" />
-
-    <!-- Giữ SVG cho trình duyệt hiện đại -->
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Đăng ký Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
   </head>
-  <body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+  <body class="bg-[#F2F2F7] text-[#1C1C1E] antialiased min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
