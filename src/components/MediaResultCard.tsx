@@ -64,10 +64,10 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   const totalSlides = isPhotos ? media.images.length : 0;
   const videoPreviewSrc = media.video?.hd || media.video?.noWatermark || '';
 
-  // Hàm chuyển đổi bytes sang MB dễ nhìn (Mục 2)
+  // Giữ lại hàm format dung lượng cho Video MP4 kèm dấu ~
   const formatSizeMb = (bytes?: number): string => {
     if (!bytes || bytes <= 0) return '';
-    return ` • ${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return ` • ~${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const nextSlide = () => {
@@ -338,7 +338,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                     {t('downloadAllPhotosCount', { count: totalSlides })}
                   </h5>
                   <p className="text-[11px] text-[#8E8E93]">
-                    ZIP Archive • {totalSlides} photos
+                    {t('originalPhotosCount', { count: totalSlides })}
                   </p>
                 </div>
               </div>
@@ -359,7 +359,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                     {t('downloadVideoHd')}
                   </h5>
                   <p className="text-[11px] text-[#8E8E93]">
-                    MP4 1080p Original{formatSizeMb(media.video?.hdSize || media.video?.size)}
+                    {t('originalVideoSubtitle')}{formatSizeMb(media.video?.hdSize || media.video?.size)}
                   </p>
                 </div>
               </div>
@@ -382,7 +382,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   {t('downloadAudio')}
                 </h5>
                 <p className="text-[11px] text-[#8E8E93]">
-                  MP3 320kbps
+                  {t('originalAudio')}
                 </p>
               </div>
             </div>
