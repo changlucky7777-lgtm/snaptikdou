@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -18,11 +19,15 @@ import {
 } from './src/server/constants';
 import { fetchWithConnectTimeout, isValidMediaResponse } from './src/server/network';
 import { getTtwid } from './src/server/ttwidManager';
+import { mediaExtractCache } from './src/server/cacheManager';
 import { resolveFinalUrl, extractFromDouyin } from './src/server/services/douyinService';
 import { extractFromTikTok } from './src/server/services/tiktokService';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+// BẮT BUỘC: Đọc đúng IP người dùng thật khi chạy qua Cloudflare / Reverse Proxy
+app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -124,6 +129,50 @@ app.post('/api/gemini/chat', async (req: Request, res: Response) => {
   }
 });
 
+// =========================================================================
+// CẤU HÌNH RATE LIMITING (BẢO VỆ MÁY CHỦ & BĂNG THÔNG)
+// =========================================================================
+
+// 1. Giới hạn bóc tách link: Tối đa 25 request/phút trên mỗi IP
+const extractLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 phút
+  max: 25,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Thao tác lấy link quá nhanh. Vui lòng đợi 1 phút rồi thử lại.',
+  },
+});
+app.use('/api/tiktok/extract', extractLimiter);
+
+// 2. Giới hạn tải file / stream: Tối đa 20 lượt tải/phút trên mỗi IP
+const downloadLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 phút
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Bạn đã đạt giới hạn tải file trong phút này. Vui lòng thử lại sau giây lát.',
+  },
+});
+app.use('/api/tiktok/download', downloadLimiter);
+app.use('/api/tiktok/bundle-zip', downloadLimiter);
+
+// 3. Giới hạn chat AI: Tối đa 15 tin nhắn/phút để bảo vệ Quota Gemini
+const geminiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 phút
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Tần suất gửi tin nhắn quá nhanh. Vui lòng chậm lại một chút.',
+  },
+});
+app.use('/api/gemini/chat', geminiLimiter);
+
 // Endpoint Extract TikTok / Douyin
 app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
   try {
@@ -142,12 +191,25 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
       return;
     }
 
+    // 1. Kiểm tra nhanh Aweme ID hoặc URL trong In-Memory Cache
+    const fastId = extractTikTokId(cleanTargetUrl) || extractTikTokId(trimmedUrl);
+    const cacheKey = fastId ? `media_${fastId}` : `url_${cleanTargetUrl}`;
+    const cachedData = mediaExtractCache.get(cacheKey);
+
+    if (cachedData) {
+      return res.json({ success: true, data: cachedData, fromCache: true });
+    }
+
     const resolvedUrl = await resolveFinalUrl(cleanTargetUrl || trimmedUrl);
     const targetIsDouyin = isDouyinUrl(resolvedUrl) || isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
 
     if (targetIsDouyin) {
       const douyinData = await extractFromDouyin(cleanTargetUrl || trimmedUrl, resolvedUrl);
       if (douyinData && (douyinData.video?.noWatermark || douyinData.images?.length > 0)) {
+        // Lưu cache theo cả ID và URL
+        if (douyinData.id) mediaExtractCache.set(`media_${douyinData.id}`, douyinData);
+        mediaExtractCache.set(`url_${cleanTargetUrl}`, douyinData);
+
         return res.json({ success: true, data: douyinData });
       }
       return res.status(422).json({
@@ -158,6 +220,13 @@ app.post('/api/tiktok/extract', async (req: Request, res: Response) => {
 
     const tiktokId = extractTikTokId(resolvedUrl) || extractTikTokId(trimmedUrl);
     const tiktokData = await extractFromTikTok(resolvedUrl, tiktokId);
+
+    if (tiktokData) {
+      // Lưu cache kết quả TikTok
+      if (tiktokData.id) mediaExtractCache.set(`media_${tiktokData.id}`, tiktokData);
+      mediaExtractCache.set(`url_${cleanTargetUrl}`, tiktokData);
+    }
+
     return res.json({ success: true, data: tiktokData });
   } catch (error: any) {
     const msg = error?.message || 'Lỗi khi trích xuất thông tin media. Vui lòng kiểm tra lại link.';
