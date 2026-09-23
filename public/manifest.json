@@ -3,10 +3,9 @@
   "short_name": "SnapTikDou",
   "description": "Tải Video, Audio, Photo Slide TikTok & Douyin không dính Logo",
   "start_url": "/",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#F2F2F7",
   "theme_color": "#F2F2F7",
-  "orientation": "portrait",
   "icons": [
     {
       "src": "/favicon.png",
@@ -16,8 +15,7 @@
     {
       "src": "/logo-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ]
 }

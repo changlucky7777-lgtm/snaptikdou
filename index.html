@@ -35,13 +35,11 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     
-    <!-- Cấu hình PWA & iOS Standalone App -->
+    <!-- Cấu hình lối tắt trình duyệt (Mở thẳng Safari/Chrome không qua màn hình Splash Screen) -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#F2F2F7" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="SnapTikDou" />
+    <meta name="mobile-web-app-capable" content="no" />
+    <meta name="apple-mobile-web-app-capable" content="no" />
 
     <!-- Hreflang SEO Tags -->
     <link rel="alternate" hreflang="x-default" href="https://snaptikdou.com/" />
@@ -55,7 +53,7 @@
     <link rel="alternate" hreflang="id" href="https://snaptikdou.com/?lang=id" />
     <link rel="alternate" hreflang="ru" href="https://snaptikdou.com/?lang=ru" />
 
-    <!-- Favicon & Icons -->
+    <!-- Favicon & Icons cho Lối tắt ngoài màn hình chính -->
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
     <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
@@ -65,15 +63,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-
-    <!-- Đăng ký Service Worker -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
-        });
-      }
-    </script>
   </head>
   <body class="bg-[#F2F2F7] text-[#1C1C1E] antialiased min-h-screen">
     <div id="root"></div>
