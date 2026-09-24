@@ -1,16 +1,21 @@
 export const CLOUDFLARE_WORKER_URL =
   process.env.CLOUDFLARE_WORKER_URL || 'https://douyin-resolver.changlucky7777.workers.dev';
+
 export const CLOUDFLARE_AUTH_TOKEN =
   process.env.WORKER_AUTH_TOKEN || '';
 
 export const TIKTOK_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
 export const DOUYIN_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
 export const DOUYIN_WECHAT_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.48(0x1800302c) NetType/WIFI Language/zh_CN';
+
 export const DOUYIN_MOBILE_USER_AGENT =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1';
+
 export const TIKTOK_MOBILE_USER_AGENT =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1';
 
@@ -22,6 +27,31 @@ export const TIKTOK_FEED_HOSTS = [
   'api16-normal-c-useast1a.tiktokv.com',
   'api16-va.tiktokv.com',
 ];
+
+/**
+ * CLIENT HINTS PROFILE 1: Chrome 124 Desktop (Đồng bộ tuyệt đối với DOUYIN_USER_AGENT & TIKTOK_USER_AGENT)
+ * Giúp vượt qua bài kiểm tra tính nhất quán Client Hints (TLS / Sec-CH-UA Parity) của ByteDance WAF
+ */
+export const CHROME_DESKTOP_CLIENT_HINTS: Record<string, string> = {
+  'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"Windows"',
+  'sec-fetch-dest': 'empty',
+  'sec-fetch-mode': 'cors',
+  'sec-fetch-site': 'same-origin',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+};
+
+/**
+ * CLIENT HINTS PROFILE 2: Mobile WebKit / Safari (Đồng bộ với DOUYIN_MOBILE_USER_AGENT)
+ * Tránh gửi nhầm sec-ch-ua (Chromium-only) vào User-Agent Safari gây nhận diện giả mạo
+ */
+export const MOBILE_SAFARI_CLIENT_HINTS: Record<string, string> = {
+  'sec-fetch-dest': 'document',
+  'sec-fetch-mode': 'navigate',
+  'sec-fetch-site': 'none',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+};
 
 export function isDouyinUrl(url: string): boolean {
   return /douyin\.com|iesdouyin\.com/i.test(url);

@@ -8,6 +8,56 @@ try {
   warpAgent = null;
 }
 
+/**
+ * Phân tích header Retry-After theo tiêu chuẩn HTTP (Số giây hoặc HTTP-Date GMT)
+ * Lấy cảm hứng từ thuật toán parse_retry_after của Scrapling
+ */
+export function parseRetryAfter(headerValue: string | null | undefined): number {
+  if (!headerValue) return 0;
+  const trimmed = headerValue.trim();
+
+  // Dạng 1: Số giây (e.g. "15", "120")
+  const seconds = Number(trimmed);
+  if (!isNaN(seconds) && seconds > 0) {
+    return seconds * 1000;
+  }
+
+  // Dạng 2: Chuẩn HTTP Date (e.g. "Wed, 21 Oct 2026 07:28:00 GMT")
+  const parsedDate = Date.parse(trimmed);
+  if (!isNaN(parsedDate)) {
+    const diff = parsedDate - Date.now();
+    return diff > 0 ? diff : 0;
+  }
+
+  return 0;
+}
+
+// Bảng Circuit Breaker theo dõi cooldown của từng host để không spam khi bị Rate Limit
+const hostCooldownMap = new Map<string, number>();
+
+export function isHostInCooldown(url: string): boolean {
+  try {
+    const host = new URL(url).host;
+    const cooldownUntil = hostCooldownMap.get(host) || 0;
+    if (Date.now() < cooldownUntil) {
+      return true;
+    }
+    if (cooldownUntil > 0) {
+      hostCooldownMap.delete(host);
+    }
+  } catch {}
+  return false;
+}
+
+export function setHostCooldown(url: string, durationMs: number) {
+  try {
+    const host = new URL(url).host;
+    // Giới hạn thời gian hạ nhiệt tối thiểu 5s, tối đa 30s để bảo vệ tài nguyên
+    const safeDuration = Math.min(30000, Math.max(5000, durationMs));
+    hostCooldownMap.set(host, Date.now() + safeDuration);
+  } catch {}
+}
+
 export interface SmartFetchOptions {
   method?: string;
   headers?: Record<string, string> | any;
@@ -82,6 +132,20 @@ export class SmartResponse {
 export async function smartFetch(url: string, options: SmartFetchOptions = {}): Promise<SmartResponse> {
   const { useProxy = true, timeout = 10000, ...fetchOpts } = options;
 
+  // Kiểm tra Circuit Breaker trước khi gửi request
+  if (isHostInCooldown(url)) {
+    throw new Error(`HOST_COOLDOWN_ACTIVE: ${url}`);
+  }
+
+  const handleResponseBackoff = (res: any) => {
+    // Nếu gặp mã rate limit 429 hoặc 503, tự động kích hoạt cooldown cho host
+    if (res.status === 429 || res.status === 503) {
+      const retryAfterVal = res.headers?.get?.('retry-after') || res.headers?.['retry-after'];
+      const backoffMs = parseRetryAfter(retryAfterVal) || 10000;
+      setHostCooldown(url, backoffMs);
+    }
+  };
+
   if (useProxy && warpAgent) {
     try {
       const controller = new AbortController();
@@ -93,6 +157,7 @@ export async function smartFetch(url: string, options: SmartFetchOptions = {}): 
         signal: controller.signal,
       });
       clearTimeout(timer);
+      handleResponseBackoff(res);
       return new SmartResponse(res, url);
     } catch {}
   }
@@ -105,6 +170,7 @@ export async function smartFetch(url: string, options: SmartFetchOptions = {}): 
       signal: controller.signal,
     });
     clearTimeout(timer);
+    handleResponseBackoff(res);
     return new SmartResponse(res, url);
   } catch (err) {
     clearTimeout(timer);

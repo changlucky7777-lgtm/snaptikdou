@@ -5,6 +5,8 @@ import {
   DOUYIN_WECHAT_UA,
   DOUYIN_MOBILE_USER_AGENT,
   TIKTOK_MOBILE_USER_AGENT,
+  CHROME_DESKTOP_CLIENT_HINTS,
+  MOBILE_SAFARI_CLIENT_HINTS,
   extractCleanUrl,
   extractDouyinId,
   extractTikTokId,
@@ -12,13 +14,14 @@ import {
   normalizeMediaUrl,
 } from '../constants';
 import { smartFetch } from '../network';
-import { getTtwid } from '../ttwidManager';
+import { getTtwid, reportInvalidTtwid } from '../ttwidManager';
 
 export async function resolveFinalUrl(rawUrl: string): Promise<string> {
   let currentUrl = extractCleanUrl(rawUrl);
   if (extractDouyinId(currentUrl) || extractTikTokId(currentUrl)) {
     return currentUrl;
   }
+
   const isDouyin = isDouyinUrl(currentUrl);
   const ttwid = isDouyin ? await getTtwid() : '';
 
@@ -27,7 +30,7 @@ export async function resolveFinalUrl(rawUrl: string): Promise<string> {
       const headers: Record<string, string> = {
         'User-Agent': isDouyin ? DOUYIN_MOBILE_USER_AGENT : TIKTOK_MOBILE_USER_AGENT,
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': isDouyin ? 'zh-CN,zh;q=0.9,en;q=0.8' : 'en-US,en;q=0.9',
+        ...MOBILE_SAFARI_CLIENT_HINTS,
       };
       if (isDouyin && ttwid) {
         headers['Cookie'] = `ttwid=${ttwid};`;
@@ -63,8 +66,8 @@ export async function resolveFinalUrl(rawUrl: string): Promise<string> {
 export function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string) {
   const isPhotos = Array.isArray(aweme.images) && aweme.images.length > 0;
   const mediaType: 'video' | 'photos' = isPhotos ? 'photos' : 'video';
-
   const images: string[] = [];
+
   if (isPhotos) {
     for (const img of aweme.images) {
       const bestUrl = img.url_list?.[0] || img.download_url_list?.[0];
@@ -115,6 +118,7 @@ export function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string
   let videoSize = 0;
   let hdVideoSize = 0;
   const backupUrls: string[] = [];
+
   const addBackup = (u: string | undefined | null) => {
     if (u && typeof u === 'string') {
       const trimmed = u.trim();
@@ -203,12 +207,14 @@ export function formatDouyinAweme(aweme: any, targetUrl: string, awemeId: string
   const audioTitle = aweme.music?.title || 'Douyin Audio';
   const audioAuthor = aweme.music?.author || aweme.author?.nickname || 'Douyin Creator';
   const audioDuration = aweme.music?.duration || 0;
+
   const coverUrl =
     aweme.video?.origin_cover?.url_list?.[0] ||
     aweme.video?.cover?.url_list?.[0] ||
     aweme.video?.dynamic_cover?.url_list?.[0] ||
     images[0] ||
     '';
+
   const durationSec = aweme.video?.duration ? Math.round(aweme.video.duration / 1000) : 0;
 
   return {
@@ -290,13 +296,14 @@ export async function extractDouyinMobileHtml(awemeId: string, originalUrl: stri
     `https://www.iesdouyin.com/share/video/${awemeId}/`,
     `https://www.douyin.com/share/video/${awemeId}/`,
   ];
+
   for (const sUrl of shareUrls) {
     try {
       const res = await smartFetch(sUrl, {
         headers: {
           'User-Agent': DOUYIN_WECHAT_UA,
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'zh-CN,zh;q=0.9',
+          ...MOBILE_SAFARI_CLIENT_HINTS,
         },
         timeout: 4500,
         useProxy: true,
@@ -359,6 +366,7 @@ export async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: str
           'User-Agent': DOUYIN_WECHAT_UA,
           Referer: 'https://www.iesdouyin.com/',
           Accept: 'application/json, text/plain, */*',
+          ...MOBILE_SAFARI_CLIENT_HINTS,
         },
         timeout: 4500,
         useProxy: true,
@@ -378,6 +386,7 @@ export async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: str
     const response = await smartFetch(detailApiUrl, {
       headers: {
         'User-Agent': DOUYIN_USER_AGENT,
+        ...CHROME_DESKTOP_CLIENT_HINTS,
         Referer: `https://www.douyin.com/video/${awemeId}`,
         Accept: 'application/json, text/plain, */*',
         Cookie: `ttwid=${ttwid};`,
@@ -385,6 +394,11 @@ export async function extractDouyinNativeApiWarp(awemeId: string, targetUrl: str
       timeout: 4500,
       useProxy: true,
     });
+
+    if (response.status === 403) {
+      reportInvalidTtwid(ttwid);
+    }
+
     if (response.ok) {
       const json = await response.json();
       if (json?.aweme_detail && json.aweme_detail.aweme_id) {
@@ -403,13 +417,18 @@ export async function extractDouyinMobileSSR(awemeId: string, targetUrl: string)
     const pageRes = await smartFetch(pageUrl, {
       headers: {
         'User-Agent': DOUYIN_USER_AGENT,
+        ...CHROME_DESKTOP_CLIENT_HINTS,
         Referer: 'https://www.douyin.com/',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         Cookie: `ttwid=${ttwid};`,
       },
       timeout: 4500,
       useProxy: true,
     });
+
+    if (pageRes.status === 403) {
+      reportInvalidTtwid(ttwid);
+    }
+
     if (pageRes.ok) {
       const html = await pageRes.text();
       const renderMatch = html.match(
@@ -454,7 +473,10 @@ export async function extractFromTikWM(targetUrl: string) {
       const getRes = await smartFetch(
         `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}&hd=1`,
         {
-          headers: { 'User-Agent': DOUYIN_USER_AGENT },
+          headers: {
+            'User-Agent': DOUYIN_USER_AGENT,
+            ...CHROME_DESKTOP_CLIENT_HINTS,
+          },
           timeout: 6000,
         }
       );
@@ -472,6 +494,7 @@ export async function extractFromTikWM(targetUrl: string) {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
           'User-Agent': DOUYIN_USER_AGENT,
+          ...CHROME_DESKTOP_CLIENT_HINTS,
           Accept: 'application/json, text/javascript, */*; q=0.01',
         },
         body: new URLSearchParams({
@@ -491,7 +514,7 @@ export async function extractFromTikWM(targetUrl: string) {
       }
     } catch {}
   }
-  throw new Error('TikWM không phân giải được link');
+  throw new Error('TikWM không phản giải được link');
 }
 
 export async function extractFromDouyin(douyinUrl: string, originalUrl?: string) {
@@ -516,7 +539,7 @@ export async function extractFromDouyin(douyinUrl: string, originalUrl?: string)
     }
   } catch {}
 
-  // 2. Native WARP API, WeChat HTML, SSR
+  // 2. Native WARP API, WeChat HTML, SSR (Gắn Client Hints)
   if (awemeId) {
     try {
       const warpData = await extractDouyinNativeApiWarp(awemeId, targetUrl);
@@ -540,7 +563,7 @@ export async function extractFromDouyin(douyinUrl: string, originalUrl?: string)
     } catch {}
   }
 
-  // 3. Fallback TikWM
+  // 3. Fallback TikWM (Có Retry-After Backoff ngầm)
   try {
     const tikwmInput = awemeId ? `https://www.iesdouyin.com/share/video/${awemeId}/` : cleanUrl;
     const tikwmData = await extractFromTikWM(tikwmInput);
