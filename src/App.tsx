@@ -558,7 +558,7 @@ export default function App() {
               <span className="text-base sm:text-lg font-bold tracking-tight text-[var(--text-primary)] leading-none">
                 SnapTikDou
               </span>
-              <span className="text-[11px] font-normal text-[var(--text-secondary)] hidden sm:inline">
+              <span className="text-[11px] font-normal text-[#1C1C1E] hidden sm:inline">
                 {t('sloganSub')}
               </span>
             </div>
@@ -588,7 +588,7 @@ export default function App() {
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[var(--text-primary)]">
               SnapTikDou
             </h1>
-            <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-xl mx-auto leading-relaxed">
+            <p className="text-sm sm:text-base text-[#1C1C1E] max-w-xl mx-auto leading-relaxed">
               {t('sloganSub')}
             </p>
           </div>
@@ -628,12 +628,12 @@ export default function App() {
               <img src="/logo.svg" alt="SnapTikDou" className="w-7 h-7 object-contain" />
               <span className="text-lg font-bold text-[var(--text-primary)] tracking-wider uppercase">SnapTikDou</span>
             </div>
-            <p className="text-xs leading-relaxed max-w-sm text-[var(--text-secondary)]">
+            <p className="text-xs leading-relaxed max-w-sm text-[#1C1C1E]">
               {t('sloganSub')}
             </p>
             <div className="text-xs pt-1">
               <span>Email: </span>
-              <a href="mailto:snaptikdou@gmail.com" className="text-[var(--text-primary)] hover:text-[var(--accent-blue)] font-medium hover:underline">
+              <a href="mailto:snaptikdou@gmail.com" className="text-[#8E8E93] hover:text-[var(--accent-blue)] font-medium hover:underline">
                 snaptikdou@gmail.com
               </a>
             </div>
