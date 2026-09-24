@@ -292,9 +292,12 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
           res.on('close', () => {
             if (!res.writableEnded) setSessionActive(downloadToken, false);
           });
+          if (res.socket) {
+            res.socket.setNoDelay(true);
+          }
           const streamToPipe =
             typeof (audioResponse.body as any)?.getReader === 'function'
-              ? Readable.fromWeb(audioResponse.body as any)
+              ? Readable.fromWeb(audioResponse.body as any, { highWaterMark: 512 * 1024 })
               : audioResponse.body;
           await pipeline(streamToPipe as any, res);
           setSessionCompleted(downloadToken);
@@ -346,9 +349,14 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
     const upstreamRange = mediaResponse.headers.get('content-range');
     if (upstreamRange) res.setHeader('Content-Range', upstreamRange);
 
+    // Tối ưu ống đệm TCP & socket cho việc truyền tải tệp lớn
+    if (res.socket) {
+      res.socket.setNoDelay(true);
+    }
+
     const streamToPipe =
       typeof (mediaResponse.body as any)?.getReader === 'function'
-        ? Readable.fromWeb(mediaResponse.body as any)
+        ? Readable.fromWeb(mediaResponse.body as any, { highWaterMark: 1024 * 1024 })
         : mediaResponse.body;
 
     await pipeline(streamToPipe as any, res);
