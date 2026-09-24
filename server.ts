@@ -179,19 +179,20 @@ async function fetchMediaWithRetry(
 }
 
 /**
- * Trích xuất âm thanh tốc độ cao từ video lớn (1GB - 3GB)
- * Tận dụng đa luồng CPU và buffer mạng tối đa để không bị nghẽn tốc độ
+ * Trích xuất âm thanh siêu tốc bằng cách Copy trực tiếp stream âm thanh gốc
+ * Không encode lại qua CPU -> Tốc độ tải ngang ngửa tải file MP4
  */
 function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string, downloadToken?: string) {
   const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
-  const finalFilename = `${baseName}.mp3`;
-  const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.mp3';
+  // Đặt tên file là .m4a hoặc .mp3 (container MP4 Audio chuẩn chơi được trên mọi điện thoại)
+  const finalFilename = `${baseName}.m4a`;
+  const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.m4a';
   const encodedFilename = encodeURIComponent(finalFilename);
   const isDouyin = /douyin|byteimg|zjcdn|ixigua/i.test(videoUrl);
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
 
-  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Content-Type', 'audio/mp4');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Accept-Ranges', 'bytes');
@@ -205,22 +206,15 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
       '-reconnect', '1',
       '-reconnect_at_eof', '1',
       '-reconnect_streamed', '1',
-      '-reconnect_delay_max', '10',
-      '-rw_timeout', '30000000',
-      // Tối ưu buffer đầu vào mạng cho FFmpeg
-      '-analyzeduration', '5000000',
-      '-probesize', '5000000',
+      '-reconnect_delay_max', '5',
+      '-rw_timeout', '15000000',
     ])
     .noVideo()
-    .audioCodec('libmp3lame')
-    .audioBitrate('128k')
+    .audioCodec('copy') // COPY STREAM TRỰC TIẾP, KHÔNG TỐN CPU, TỐC ĐỘ CỰC CAO
     .outputOptions([
-      '-threads', '0',        // Sử dụng tối đa tất cả core CPU của VPS để tăng tốc encode
-      '-preset', 'ultrafast',  // Tốc độ chuyển đổi nhanh nhất có thể
-      '-id3v2_version', '3',   // Header ID3v2 chuẩn để iOS và Android nhận dạng ngay không cần đọc hết file
-      '-write_xing', '0',
+      '-movflags', 'frag_keyframe+empty_moov+default_base_moof', // Chuẩn stream phân đoạn cho Web/Mobile
     ])
-    .format('mp3');
+    .format('mp4');
 
   setSessionActive(downloadToken, true);
 
