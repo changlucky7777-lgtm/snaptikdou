@@ -257,9 +257,11 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
     const videoFallback = ((req.query.videoFallback || req.body?.videoFallback) as string) || '';
     const downloadToken = ((req.query.downloadToken || req.body?.downloadToken) as string) || '';
     const requestedFilename = ((req.query.filename || req.body?.filename) as string) || 'media.mp4';
+    
+    // Kiểm tra chính xác định dạng yêu cầu có phải là MP3/Audio không
     const isMp3Request =
-      requestedFilename.endsWith('.mp3') ||
-      requestedFilename.endsWith('.m4a') ||
+      requestedFilename.toLowerCase().endsWith('.mp3') ||
+      requestedFilename.toLowerCase().endsWith('.m4a') ||
       req.query.mediaType === 'audio' ||
       req.body?.mediaType === 'audio';
 
@@ -267,10 +269,12 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
       Boolean(u) &&
       (isDouyinUrl(u) || /zjcdn\.com|douyinvod\.com|byteimg\.com|douyin\.com|snssdk\.com|ixigua\.com/i.test(u));
 
-    // Xử lý luồng tải âm thanh MP3
+    // ==========================================
+    // 1. LUỒNG XỬ LÝ ÂM THANH (AUDIO / MP3)
+    // ==========================================
     if (isMp3Request) {
       const directAudioUrl = rawUrl || fallbackUrl;
-      // Nếu có link audio trực tiếp và không phải chuyển đổi từ video lớn
+      // Nếu có link nhạc trực tiếp và không phải đuôi mp4
       if (directAudioUrl && !directAudioUrl.includes('.mp4')) {
         const isDouyinAudio = checkIsDouyin(directAudioUrl) || checkIsDouyin(postUrl);
         const audioResponse = await fetchMediaWithRetry(directAudioUrl, { isDouyin: isDouyinAudio });
@@ -298,36 +302,58 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
         }
       }
 
-      // Nếu không có direct audio hoặc nguồn là stream từ file video lớn, dùng bộ chuyển đổi FFmpeg bền bỉ
+      // Nếu không có link nhạc riêng, transcode từ video sang MP3
       const transcodeSource = videoFallback || rawUrl || fallbackUrl;
       if (transcodeSource) {
         return transcodeVideoToMp3Stream(transcodeSource, res, requestedFilename, downloadToken);
       }
+      return res.status(404).json({ success: false, message: 'Không tìm thấy nguồn audio' });
     }
 
-    const isDouyin = checkIsDouyin(rawUrl || '') || checkIsDouyin(postUrl || '');
+    // ==========================================
+    // 2. LUỒNG XỬ LÝ VIDEO (HỖ TRỢ FILE LỚN > 3GB)
+    // ==========================================
+    const targetVideoUrl = rawUrl || fallbackUrl;
+    if (!targetVideoUrl) {
+      res.status(400).json({ success: false, message: 'Thiếu liên kết video' });
+      return;
+    }
+
+    const isDouyin = checkIsDouyin(targetVideoUrl) || checkIsDouyin(postUrl || '');
     const requestedRange = req.headers.range as string | undefined;
-    let mediaResponse = await fetchMediaWithRetry(rawUrl || fallbackUrl, { isDouyin, range: requestedRange });
+    
+    // Gửi request tới upstream CDN kèm Range header nếu có
+    const mediaResponse = await fetchMediaWithRetry(targetVideoUrl, { isDouyin, range: requestedRange });
 
     if (!isValidMediaResponse(mediaResponse) || !mediaResponse?.body) {
-      res.status(502).json({ success: false, error: 'Máy chủ nguồn tạm thời chặn luồng tải.' });
+      res.status(502).json({ success: false, error: 'Máy chủ nguồn tạm thời chặn luồng tải video.' });
       return;
     }
 
     const safeFilename = requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'media.mp4';
     const encodedFilename = encodeURIComponent(requestedFilename);
-    res.setHeader('Content-Type', requestedFilename.endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream');
+
+    // Truyền tải đúng trạng thái 200 (OK) hoặc 206 (Partial Content khi tải dở/resume)
+    res.status(mediaResponse.status === 206 ? 206 : 200);
+    res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Accept-Ranges', 'bytes');
+
+    // Chuyển tiếp chính xác Content-Length và Content-Range để trình duyệt ghi file lớn không bị ngắt
+    const upstreamLength = mediaResponse.headers.get('content-length');
+    if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
+    const upstreamRange = mediaResponse.headers.get('content-range');
+    if (upstreamRange) res.setHeader('Content-Range', upstreamRange);
 
     const streamToPipe =
       typeof (mediaResponse.body as any)?.getReader === 'function'
         ? Readable.fromWeb(mediaResponse.body as any)
         : mediaResponse.body;
+
     await pipeline(streamToPipe as any, res);
   } catch (err: any) {
-    if (!res.headersSent) res.status(502).json({ success: false, error: 'Lỗi tải xuống tập tin' });
+    if (!res.headersSent) res.status(502).json({ success: false, error: 'Lỗi tải xuống tập tin video' });
     else if (!res.writableEnded) res.end();
   }
 });

@@ -238,15 +238,7 @@ export default function App() {
         });
         const initialUrl = primaryUrl || fallbackUrl;
         const backupUrls = media.video.backupUrls || [];
-        const downloadPayload = {
-          url: initialUrl,
-          fallbackUrl: fallbackUrl && fallbackUrl !== initialUrl ? fallbackUrl : '',
-          backupUrls,
-          postUrl: media.url,
-          mediaType: 'video',
-          resolution: type === 'video_hd' ? 'hd' : 'sd',
-          filename: pathData.filename,
-        };
+
         const downloadParams = new URLSearchParams({
           url: initialUrl,
           fallbackUrl: fallbackUrl || '',
@@ -259,42 +251,49 @@ export default function App() {
           downloadParams.set('backupUrls', backupUrls.join(','));
         }
         const downloadUrl = `/api/tiktok/download?${downloadParams.toString()}`;
+
+        // Kiểm tra kích thước file: nếu file > 100MB hoặc trên điện thoại, dùng Native Download để không bị tràn RAM
+        const estimatedSize = media.video?.hdSize || media.video?.size || 0;
+        const isVeryLargeFile = estimatedSize > 100 * 1024 * 1024; // > 100MB
+        const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+        if (isVeryLargeFile || isMobile) {
+          setDownloadProgressText('');
+          triggerNativeBrowserDownload(downloadUrl, pathData.filename);
+          addHistoryRecord(media, pathData.fullPath, type, 'video');
+          return;
+        }
+
         setDownloadProgressText(t('loadingVideo'));
         let blob: Blob | null = null;
-        if (initialUrl && !initialUrl.startsWith('/api/')) {
-          try {
-            blob = await streamFetchBlob(initialUrl, (p) => setDownloadProgressText(p), 20000, undefined, session);
-          } catch (cdnErr: any) {
-            if (session.isCancelled || cdnErr?.name === 'AbortError') throw cdnErr;
-          }
+        try {
+          blob = await streamFetchBlob(
+            '/api/tiktok/download',
+            (progressText) => setDownloadProgressText(progressText),
+            60000,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url: initialUrl,
+                fallbackUrl: fallbackUrl && fallbackUrl !== initialUrl ? fallbackUrl : '',
+                backupUrls,
+                postUrl: media.url,
+                mediaType: 'video',
+                resolution: type === 'video_hd' ? 'hd' : 'sd',
+                filename: pathData.filename,
+              }),
+            },
+            session
+          );
+        } catch (err: any) {
+          if (session.isCancelled || err?.name === 'AbortError') throw err;
         }
-        if (!blob) {
-          try {
-            blob = await streamFetchBlob(
-              '/api/tiktok/download',
-              (progressText) => setDownloadProgressText(progressText),
-              45000,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(downloadPayload),
-              },
-              session
-            );
-          } catch (err: any) {
-            if (session.isCancelled || err?.name === 'AbortError') throw err;
-            try {
-              blob = await streamFetchBlob(downloadUrl, (p) => setDownloadProgressText(p), 45000, undefined, session);
-            } catch (err2: any) {
-              if (session.isCancelled || err2?.name === 'AbortError') throw err2;
-            }
-          }
-        }
+
         if (session.isCancelled) return;
         if (blob) {
           await downloadBlobSafely(blob, pathData.filename);
           addHistoryRecord(media, pathData.fullPath, type, 'video');
-          // Xóa ngay tiến trình, không hiển thị thanh "Đã tải xong!"
           setDownloadProgressText('');
         } else {
           triggerNativeBrowserDownload(downloadUrl, pathData.filename);
