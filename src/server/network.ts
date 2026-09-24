@@ -181,7 +181,7 @@ export async function smartFetch(url: string, options: SmartFetchOptions = {}): 
 export async function fetchWithConnectTimeout(
   url: string,
   options: any = {},
-  connectTimeoutMs = 8000
+  connectTimeoutMs = 12000
 ): Promise<any> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -193,7 +193,10 @@ export async function fetchWithConnectTimeout(
     signal: controller.signal,
   };
 
-  if (warpAgent) {
+  // CDN media của Douyin/TikTok không khóa IP, không cho đi qua WARP proxy để tránh bị bóp băng thông
+  const isCdnUrl = /douyinvod\.com|zjcdn\.com|byteimg\.com|tiktokcdn\.com|snssdk\.com\/video|ixigua\.com|pstatp\.com/i.test(url);
+
+  if (!isCdnUrl && warpAgent) {
     try {
       const res = await (fetch as any)(url, {
         ...fetchOptions,
