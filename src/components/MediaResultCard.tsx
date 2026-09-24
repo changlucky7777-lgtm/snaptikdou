@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Play, Download, Music, Eye, Heart, MessageCircle, Share2, 
-  ChevronLeft, ChevronRight, Pause, Play as ResumeIcon, X, Film, Info, Images, Image as ImageIcon
+  ChevronLeft, ChevronRight, Pause, Play as ResumeIcon, X, Film, Info, Images 
 } from 'lucide-react';
 import { TikTokMediaItem } from '../types';
 
@@ -57,13 +57,11 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   const { t } = useTranslation();
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-
   const isMobileDevice = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const isPhotos = media.mediaType === 'photos' && media.images?.length > 0;
   const totalSlides = isPhotos ? media.images.length : 0;
   const videoPreviewSrc = media.video?.hd || media.video?.noWatermark || '';
 
-  // Hàm format dung lượng cho Video MP4 kèm dấu ~
   const formatSizeMb = (bytes?: number): string => {
     if (!bytes || bytes <= 0) return '';
     return ` • ~${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -77,22 +75,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
     setCurrentSlideIndex((prev) => (prev - 1 + totalSlides) % totalSlides);
   };
 
-  // Hàm tải ảnh bìa gốc (Cover HD)
-  const handleDownloadCover = () => {
-    const coverUrl = media.cover || (isPhotos ? media.images[0] : '');
-    if (!coverUrl) return;
-    const a = document.createElement('a');
-    a.href = `/api/tiktok/download?url=${encodeURIComponent(coverUrl)}&filename=${encodeURIComponent(`@${media.author.uniqueId}_cover.jpg`)}`;
-    a.download = `@${media.author.uniqueId}_cover.jpg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
   return (
     <div className="w-full max-w-2xl mx-auto bg-[var(--bg-surface)] rounded-[28px] p-5 sm:p-7 shadow-[var(--shadow-card)] border border-[var(--border-subtle)] space-y-5 animate-in fade-in duration-300 text-[var(--text-primary)]">
-      
-      {/* Tác giả & Số liệu */}
+      {/* Tác giả & Stats */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <img
@@ -112,7 +97,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             </div>
           </div>
         </div>
-
         <div className="hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full bg-[var(--bg-surface-secondary)] text-[11px] font-medium text-[var(--text-secondary)] border border-[var(--border-subtle)]">
           <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5 text-[var(--text-primary)]" /> {media.stats?.plays?.toLocaleString() || 0}</span>
           <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5 text-rose-500" /> {media.stats?.likes?.toLocaleString() || 0}</span>
@@ -123,7 +107,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
 
       {/* Cụm xem nội dung */}
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-        {/* Bên trái: Thumbnail / Viewport & Dải Thumbnail Strip */}
         <div className="sm:col-span-5 space-y-2">
           <div className="relative rounded-2xl overflow-hidden bg-black/10 aspect-[3/4] flex items-center justify-center border border-[var(--border-subtle)] group">
             {isPhotos ? (
@@ -133,13 +116,9 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   alt={`Slide ${currentSlideIndex + 1}`}
                   className="w-full h-full object-cover transition-opacity duration-200"
                 />
-                
-                {/* Badge đếm số ảnh */}
                 <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-white text-[11px] font-medium shadow-xs border border-white/10">
                   {currentSlideIndex + 1} / {totalSlides}
                 </div>
-
-                {/* Nút tải ảnh đơn đang xem */}
                 <button
                   type="button"
                   onClick={() => onDownloadSingle(media, 'photo_single', currentSlideIndex)}
@@ -148,8 +127,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 >
                   <Download className="w-4 h-4 text-white" />
                 </button>
-
-                {/* Mũi tên tới / lui */}
                 {totalSlides > 1 && (
                   <>
                     <button
@@ -176,7 +153,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   alt="Video Cover"
                   className="w-full h-full object-cover"
                 />
-                {/* Nút Play trung tâm */}
                 <button
                   type="button"
                   onClick={() => setIsPreviewOpen(true)}
@@ -185,8 +161,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 >
                   <Play className="w-5 h-5 ml-0.5 fill-[#1C1C1E] text-[#1C1C1E]" />
                 </button>
-
-                {/* Nút nhỏ Mở video */}
                 <button
                   type="button"
                   onClick={() => setIsPreviewOpen(true)}
@@ -195,21 +169,10 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                   <Film className="w-3.5 h-3.5" />
                   <span>{t('openVideo')}</span>
                 </button>
-
-                {/* Nút tải ảnh bìa gốc (Cover HD) */}
-                <button
-                  type="button"
-                  onClick={handleDownloadCover}
-                  className="absolute bottom-2.5 right-2.5 p-2 rounded-full bg-black/70 hover:bg-black/85 backdrop-blur-md text-white shadow-sm active:scale-95 transition-all cursor-pointer z-10 border border-white/10"
-                  title={t('downloadCover')}
-                >
-                  <ImageIcon className="w-3.5 h-3.5" />
-                </button>
               </>
             )}
           </div>
 
-          {/* Dải Thumbnail Strip cuộn ngang phong cách iOS Photos */}
           {isPhotos && totalSlides > 1 && (
             <div className="flex items-center gap-1.5 overflow-x-auto py-1 px-0.5 no-scrollbar scroll-smooth">
               {media.images.map((imgUrl, index) => {
@@ -237,7 +200,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
           )}
         </div>
 
-        {/* Bên phải: Tiêu đề & Dòng âm thanh */}
         <div className="sm:col-span-7 flex flex-col justify-between space-y-3">
           <div className="space-y-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
@@ -246,8 +208,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             <p className="text-xs sm:text-sm text-[var(--text-primary)] leading-relaxed line-clamp-4 select-text">
               {media.title || 'No description available'}
             </p>
-
-            {/* Dòng âm thanh inline */}
             {media.audio && (
               <div className="flex items-center gap-1.5 pt-1 text-xs text-[var(--text-secondary)]">
                 <Music className="w-3.5 h-3.5 text-[var(--accent-blue)] shrink-0" />
@@ -256,7 +216,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 </span>
                 {media.audio.author && (
                   <span className="truncate text-[var(--text-secondary)]">
-                    — {media.audio.author}
+                      {media.audio.author}
                   </span>
                 )}
               </div>
@@ -265,7 +225,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       </div>
 
-      {/* Thanh tiến trình tải */}
       {downloadProgressText && (
         <div className="space-y-2 animate-in fade-in duration-200">
           <div className="p-3.5 rounded-2xl bg-[var(--bg-surface-secondary)] border border-[var(--border-subtle)] flex items-center justify-between gap-3">
@@ -275,7 +234,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 {downloadProgressText}
               </span>
             </div>
-
             <div className="flex items-center gap-1.5 shrink-0">
               {isDownloading && (
                 <>
@@ -302,7 +260,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </div>
       )}
 
-      {/* Fallback tốc độ cao */}
       {directDownloadInfo && (
         <button
           type="button"
@@ -314,14 +271,11 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         </button>
       )}
 
-      {/* Danh sách các nút tải phương tiện */}
       <div className="space-y-2 pt-2">
         <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] block px-1">
           {t('downloadOptions')}
         </span>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {/* Nút Video HD hoặc Nút Album ZIP */}
           {isPhotos ? (
             <button
               type="button"
@@ -366,7 +320,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             </button>
           )}
 
-          {/* Nút Tải Audio MP3 */}
           <button
             type="button"
             onClick={() => onDownloadSingle(media, 'audio')}
@@ -389,7 +342,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
           </button>
         </div>
 
-        {/* Dòng chú ý cố định riêng cho thiết bị di động */}
         {isMobileDevice && (
           <div className="pt-2 px-1 text-center">
             <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed flex items-center justify-center gap-1.5 font-normal">
@@ -400,7 +352,6 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
         )}
       </div>
 
-      {/* Modal xem trước video tại chỗ */}
       {isPreviewOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[var(--modal-backdrop)] backdrop-blur-xl animate-in fade-in duration-200"
@@ -414,11 +365,10 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
               type="button"
               onClick={() => setIsPreviewOpen(false)}
               className="absolute top-4 right-4 z-20 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white backdrop-blur-md transition-all active:scale-95 cursor-pointer shadow-md"
-              title="Đóng xem trước"
+              title="Đóng"
             >
               <X className="w-5 h-5" />
             </button>
-
             <video
               src={videoPreviewSrc}
               controls
