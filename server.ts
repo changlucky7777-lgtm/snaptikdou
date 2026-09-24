@@ -179,8 +179,8 @@ async function fetchMediaWithRetry(
 }
 
 /**
- * Chuyển đổi âm thanh chuẩn MP3 cho video dung lượng lớn (1GB - 3GB)
- * Khắc phục hoàn toàn lỗi ngắt socket CDN ở 61MB và lỗi file không phát được trên điện thoại
+ * Trích xuất âm thanh tốc độ cao từ video lớn (1GB - 3GB)
+ * Tận dụng đa luồng CPU và buffer mạng tối đa để không bị nghẽn tốc độ
  */
 function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string, downloadToken?: string) {
   const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
@@ -194,10 +194,10 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Accept-Ranges', 'bytes');
 
   const ffmpegHeaders = `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`;
-  
-  // Thiết lập cờ kết nối siêu bền bỉ cho tệp dung lượng lớn
+
   const command = ffmpeg()
     .input(videoUrl)
     .inputOptions([
@@ -206,11 +206,20 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
       '-reconnect_at_eof', '1',
       '-reconnect_streamed', '1',
       '-reconnect_delay_max', '10',
-      '-rw_timeout', '30000000', // 30s socket timeout tránh bị CDN ngắt ngang
+      '-rw_timeout', '30000000',
+      // Tối ưu buffer đầu vào mạng cho FFmpeg
+      '-analyzeduration', '5000000',
+      '-probesize', '5000000',
     ])
     .noVideo()
-    .audioCodec('libmp3lame')     // Chuẩn MP3 tương thích 100% mọi trình phát
-    .audioBitrate('128k')         // Bitrate chuẩn vừa nhẹ vừa đảm bảo chất lượng
+    .audioCodec('libmp3lame')
+    .audioBitrate('128k')
+    .outputOptions([
+      '-threads', '0',        // Sử dụng tối đa tất cả core CPU của VPS để tăng tốc encode
+      '-preset', 'ultrafast',  // Tốc độ chuyển đổi nhanh nhất có thể
+      '-id3v2_version', '3',   // Header ID3v2 chuẩn để iOS và Android nhận dạng ngay không cần đọc hết file
+      '-write_xing', '0',
+    ])
     .format('mp3');
 
   setSessionActive(downloadToken, true);
@@ -219,7 +228,7 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
     setSessionCompleted(downloadToken);
   });
 
-  command.on('error', (err) => {
+  command.on('error', (_err) => {
     setSessionActive(downloadToken, false);
     if (!res.headersSent) {
       res.status(500).json({ success: false, message: 'Lỗi trích xuất audio' });
@@ -237,6 +246,7 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
     }
   });
 
+  res.socket?.setNoDelay(true);
   command.pipe(res, { end: true });
 }
 
