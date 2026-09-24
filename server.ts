@@ -178,7 +178,10 @@ async function fetchMediaWithRetry(
   return null;
 }
 
-// Transcode video stream to mp3 via FFmpeg
+/**
+ * Chuyển đổi âm thanh chuẩn MP3 cho video dung lượng lớn (1GB - 3GB)
+ * Khắc phục hoàn toàn lỗi ngắt socket CDN ở 61MB và lỗi file không phát được trên điện thoại
+ */
 function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string, downloadToken?: string) {
   const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
   const finalFilename = `${baseName}.mp3`;
@@ -193,24 +196,45 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
   const ffmpegHeaders = `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`;
+  
+  // Thiết lập cờ kết nối siêu bền bỉ cho tệp dung lượng lớn
   const command = ffmpeg()
     .input(videoUrl)
-    .inputOptions(['-headers', ffmpegHeaders, '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'])
+    .inputOptions([
+      '-headers', ffmpegHeaders,
+      '-reconnect', '1',
+      '-reconnect_at_eof', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '10',
+      '-rw_timeout', '30000000', // 30s socket timeout tránh bị CDN ngắt ngang
+    ])
     .noVideo()
-    .audioCodec('copy')
-    .format('adts');
+    .audioCodec('libmp3lame')     // Chuẩn MP3 tương thích 100% mọi trình phát
+    .audioBitrate('128k')         // Bitrate chuẩn vừa nhẹ vừa đảm bảo chất lượng
+    .format('mp3');
 
   setSessionActive(downloadToken, true);
-  command.on('end', () => setSessionCompleted(downloadToken));
-  command.on('error', (_err) => {
+
+  command.on('end', () => {
+    setSessionCompleted(downloadToken);
+  });
+
+  command.on('error', (err) => {
     setSessionActive(downloadToken, false);
-    if (!res.headersSent) res.status(500).json({ success: false, message: 'Lỗi trích xuất audio' });
-    else if (!res.writableEnded) res.end();
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Lỗi trích xuất audio' });
+    } else if (!res.writableEnded) {
+      res.end();
+    }
   });
 
   res.on('close', () => {
-    try { command.kill('SIGKILL'); } catch {}
-    if (!res.writableEnded) setSessionActive(downloadToken, false);
+    try {
+      command.kill('SIGKILL');
+    } catch {}
+    if (!res.writableEnded) {
+      setSessionActive(downloadToken, false);
+    }
   });
 
   command.pipe(res, { end: true });
@@ -233,15 +257,21 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
     const videoFallback = ((req.query.videoFallback || req.body?.videoFallback) as string) || '';
     const downloadToken = ((req.query.downloadToken || req.body?.downloadToken) as string) || '';
     const requestedFilename = ((req.query.filename || req.body?.filename) as string) || 'media.mp4';
-    const isMp3Request = requestedFilename.endsWith('.mp3') || requestedFilename.endsWith('.m4a') || req.query.mediaType === 'audio' || req.body?.mediaType === 'audio';
+    const isMp3Request =
+      requestedFilename.endsWith('.mp3') ||
+      requestedFilename.endsWith('.m4a') ||
+      req.query.mediaType === 'audio' ||
+      req.body?.mediaType === 'audio';
 
     const checkIsDouyin = (u: string) =>
       Boolean(u) &&
       (isDouyinUrl(u) || /zjcdn\.com|douyinvod\.com|byteimg\.com|douyin\.com|snssdk\.com|ixigua\.com/i.test(u));
 
+    // Xử lý luồng tải âm thanh MP3
     if (isMp3Request) {
       const directAudioUrl = rawUrl || fallbackUrl;
-      if (directAudioUrl) {
+      // Nếu có link audio trực tiếp và không phải chuyển đổi từ video lớn
+      if (directAudioUrl && !directAudioUrl.includes('.mp4')) {
         const isDouyinAudio = checkIsDouyin(directAudioUrl) || checkIsDouyin(postUrl);
         const audioResponse = await fetchMediaWithRetry(directAudioUrl, { isDouyin: isDouyinAudio });
         if (isValidMediaResponse(audioResponse) && audioResponse?.body) {
@@ -255,17 +285,23 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
           if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
 
           setSessionActive(downloadToken, true);
-          res.on('close', () => { if (!res.writableEnded) setSessionActive(downloadToken, false); });
-          const streamToPipe = typeof (audioResponse.body as any)?.getReader === 'function'
-            ? Readable.fromWeb(audioResponse.body as any)
-            : audioResponse.body;
+          res.on('close', () => {
+            if (!res.writableEnded) setSessionActive(downloadToken, false);
+          });
+          const streamToPipe =
+            typeof (audioResponse.body as any)?.getReader === 'function'
+              ? Readable.fromWeb(audioResponse.body as any)
+              : audioResponse.body;
           await pipeline(streamToPipe as any, res);
           setSessionCompleted(downloadToken);
           return;
         }
       }
-      if (videoFallback) {
-        return transcodeVideoToMp3Stream(videoFallback, res, requestedFilename, downloadToken);
+
+      // Nếu không có direct audio hoặc nguồn là stream từ file video lớn, dùng bộ chuyển đổi FFmpeg bền bỉ
+      const transcodeSource = videoFallback || rawUrl || fallbackUrl;
+      if (transcodeSource) {
+        return transcodeVideoToMp3Stream(transcodeSource, res, requestedFilename, downloadToken);
       }
     }
 
@@ -285,9 +321,10 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Accept-Ranges', 'bytes');
 
-    const streamToPipe = typeof (mediaResponse.body as any)?.getReader === 'function'
-      ? Readable.fromWeb(mediaResponse.body as any)
-      : mediaResponse.body;
+    const streamToPipe =
+      typeof (mediaResponse.body as any)?.getReader === 'function'
+        ? Readable.fromWeb(mediaResponse.body as any)
+        : mediaResponse.body;
     await pipeline(streamToPipe as any, res);
   } catch (err: any) {
     if (!res.headersSent) res.status(502).json({ success: false, error: 'Lỗi tải xuống tập tin' });
