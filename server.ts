@@ -14,6 +14,7 @@ import {
   extractTikTokId,
   isDouyinUrl,
   isTikTokUrl,
+  isSafeMediaUrl,
   normalizeMediaUrl,
 } from './src/server/constants';
 import { fetchWithConnectTimeout, isValidMediaResponse } from './src/server/network';
@@ -390,7 +391,7 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
   }
 });
 
-// Đóng gói ZIP Album ảnh
+// Endpoint đóng gói ZIP Album
 app.post('/api/tiktok/bundle-zip', downloadRateLimiter, async (req: Request, res: Response) => {
   try {
     const { items, zipName } = req.body as { items: Array<{ url: string; relativePath: string }>; zipName?: string };
@@ -398,16 +399,36 @@ app.post('/api/tiktok/bundle-zip', downloadRateLimiter, async (req: Request, res
       res.status(400).json({ success: false, error: 'Danh sách rỗng' });
       return;
     }
-    const zip = new JSZip();
-    const finalZipName = (zipName || 'snaptikdou_bundle.zip').replace(/[^\w\d_.-]/gi, '_');
 
+    // Chống DoS: Giới hạn tối đa 100 tệp cho mỗi lần đóng gói ZIP
+    if (items.length > 100) {
+      res.status(400).json({ success: false, error: 'Số lượng tệp vượt quá giới hạn cho phép (tối đa 100)' });
+      return;
+    }
+
+    const zip = new JSZip();
     await Promise.all(
       items.map(async (item) => {
         try {
+          // BẢO MẬT: Kiểm tra URL bắt buộc thuộc CDN an toàn (chống SSRF)
+          if (!item.url || typeof item.url !== 'string' || !isSafeMediaUrl(item.url)) {
+            return;
+          }
+
           const fetchRes = await fetchMediaWithRetry(item.url, { isDouyin: isDouyinUrl(item.url) });
           if (fetchRes && fetchRes.ok) {
             const buffer = await fetchRes.arrayBuffer();
-            zip.file(item.relativePath.replace(/^\/+/, ''), buffer);
+            
+            // Làm sạch đường dẫn tuyệt đối chống Zip Slip / Path Traversal
+            const cleanPath = item.relativePath
+              .replace(/\\/g, '/')
+              .split('/')
+              .filter((p) => p && p !== '.' && p !== '..')
+              .join('/');
+              
+            if (cleanPath) {
+              zip.file(cleanPath, buffer);
+            }
           }
         } catch {}
       })

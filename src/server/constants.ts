@@ -61,6 +61,31 @@ export function isTikTokUrl(url: string): boolean {
   return /tiktok\.com/i.test(url);
 }
 
+export function isSafeMediaUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      hostname.endsWith('douyin.com') ||
+      hostname.endsWith('iesdouyin.com') ||
+      hostname.endsWith('douyinvod.com') ||
+      hostname.endsWith('byteimg.com') ||
+      hostname.endsWith('zjcdn.com') ||
+      hostname.endsWith('snssdk.com') ||
+      hostname.endsWith('ixigua.com') ||
+      hostname.endsWith('pstatp.com') ||
+      hostname.endsWith('tiktok.com') ||
+      hostname.endsWith('tiktokcdn.com') ||
+      hostname.endsWith('tiktokv.com') ||
+      hostname.endsWith('tikwm.com')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function extractCleanUrl(rawInput: string): string {
   if (!rawInput || typeof rawInput !== 'string') return '';
   const match = rawInput.match(/https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/i);

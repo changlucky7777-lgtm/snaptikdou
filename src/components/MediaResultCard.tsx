@@ -53,6 +53,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
   downloadProgressText,
   directDownloadInfo,
   onDirectDownload,
+  showIosWarning,
 }) => {
   const { t } = useTranslation();
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
@@ -156,10 +157,10 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsPreviewOpen(true)}
-                  className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-white/95 backdrop-blur-md flex items-center justify-center text-[#1C1C1E] shadow-lg active:scale-95 hover:bg-white transition-all cursor-pointer z-10 border border-black/5"
+                  className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-[var(--bg-surface)] backdrop-blur-md flex items-center justify-center text-[var(--text-primary)] shadow-lg active:scale-95 hover:bg-[var(--bg-surface-secondary)] transition-all cursor-pointer z-10 border border-black/5"
                   title={t('openVideo')}
                 >
-                  <Play className="w-5 h-5 ml-0.5 fill-[#1C1C1E] text-[#1C1C1E]" />
+                  <Play className="w-5 h-5 ml-0.5 fill-[var(--text-primary)] text-[var(--text-primary)]" />
                 </button>
                 <button
                   type="button"
@@ -342,7 +343,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
           </button>
         </div>
 
-        {isMobileDevice && (
+        {(isMobileDevice || showIosWarning) && (
           <div className="pt-2 px-1 text-center">
             <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed flex items-center justify-center gap-1.5 font-normal">
               <Info className="w-3.5 h-3.5 text-[var(--text-secondary)] shrink-0" />

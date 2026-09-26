@@ -174,7 +174,12 @@ export async function createClientZipArchive(
     if (session?.isPaused) {
       await session.waitIfPaused();
     }
-    const normalizedPath = item.nameOrPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    const normalizedPath =
+      item.nameOrPath
+        .replace(/\\/g, '/')
+        .split('/')
+        .filter((part) => part && part !== '.' && part !== '..')
+        .join('/') || `file_${count + 1}`;
     if (onProgress) {
       onProgress(Math.round((count / items.length) * 90), normalizedPath);
     }
@@ -448,7 +453,7 @@ export async function streamFetchBlob(
     }
 
     const controller = session ? session.abortController : new AbortController();
-    let timer: any = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     if (!session) {
       timer = setTimeout(() => {
         controller.abort(new DOMException(`Request timed out after ${timeoutMs}ms`, 'TimeoutError'));

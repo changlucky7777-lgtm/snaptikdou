@@ -27,7 +27,6 @@ export function createRateLimiter(options: RateLimiterOptions) {
   return (req: Request, res: Response, next: NextFunction) => {
     const clientIp =
       (req.headers['cf-connecting-ip'] as string) ||
-      ((req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()) ||
       req.ip ||
       req.socket.remoteAddress ||
       'unknown_client';
