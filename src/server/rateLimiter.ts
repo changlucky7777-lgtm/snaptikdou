@@ -13,7 +13,7 @@ interface RateLimiterOptions {
 export function createRateLimiter(options: RateLimiterOptions) {
   const ipStore = new Map<string, RateLimitRecord>();
 
-  // Tự động dọn dẹp các IP không còn hoạt động mỗi 2 phút để bảo vệ RAM
+  // Tự động dọn dẹp bộ nhớ IP định kỳ mỗi 2 phút
   setInterval(() => {
     const now = Date.now();
     for (const [ip, record] of ipStore.entries()) {
@@ -25,15 +25,15 @@ export function createRateLimiter(options: RateLimiterOptions) {
   }, 2 * 60 * 1000);
 
   return (req: Request, res: Response, next: NextFunction) => {
+    // BẢO MẬT: Sử dụng req.ip đã được Express xác thực an toàn thông qua app.set('trust proxy', 1)
+    // Ngăn chặn hoàn toàn lỗ hổng IP Spoofing do client tự chèn header giả mạo
     const clientIp =
-      (req.headers['cf-connecting-ip'] as string) ||
       req.ip ||
       req.socket.remoteAddress ||
       'unknown_client';
 
     const now = Date.now();
     let record = ipStore.get(clientIp);
-
     if (!record) {
       record = { timestamps: [] };
       ipStore.set(clientIp, record);
