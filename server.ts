@@ -14,6 +14,7 @@ import {
   extractTikTokId,
   isDouyinUrl,
   isTikTokUrl,
+  isSafeMediaUrl,
   normalizeMediaUrl,
 } from './src/server/constants';
 import { fetchWithConnectTimeout, isValidMediaResponse } from './src/server/network';
@@ -28,6 +29,15 @@ const PORT = Number(process.env.PORT) || 3000;
 
 // Tin tưởng proxy từ Cloudflare / Nginx
 app.set('trust proxy', 1);
+
+// HTTP Security Headers
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -195,6 +205,10 @@ async function fetchMediaWithRetry(
  * - Sử dụng đa luồng CPU tối đa (-threads 0) để duy trì tốc độ truyền tải cao
  */
 function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string, downloadToken?: string) {
+  if (!isSafeMediaUrl(videoUrl)) {
+    res.status(400).json({ success: false, message: 'URL video không hợp lệ hoặc không an toàn' });
+    return;
+  }
   const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
   const finalFilename = `${baseName}.mp3`;
   const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.mp3';
@@ -297,6 +311,9 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
       const directAudioUrl = rawUrl || fallbackUrl;
       // Nếu có link nhạc trực tiếp và không phải đuôi mp4
       if (directAudioUrl && !directAudioUrl.includes('.mp4')) {
+        if (!isSafeMediaUrl(directAudioUrl)) {
+          return res.status(400).json({ success: false, message: 'URL âm thanh không hợp lệ hoặc không an toàn' });
+        }
         const isDouyinAudio = checkIsDouyin(directAudioUrl) || checkIsDouyin(postUrl);
         const audioResponse = await fetchMediaWithRetry(directAudioUrl, { isDouyin: isDouyinAudio });
         if (isValidMediaResponse(audioResponse) && audioResponse?.body) {
@@ -340,6 +357,10 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
     const targetVideoUrl = rawUrl || fallbackUrl;
     if (!targetVideoUrl) {
       res.status(400).json({ success: false, message: 'Thiếu liên kết video' });
+      return;
+    }
+    if (!isSafeMediaUrl(targetVideoUrl)) {
+      res.status(400).json({ success: false, message: 'URL video không hợp lệ hoặc không an toàn' });
       return;
     }
 
@@ -398,16 +419,28 @@ app.post('/api/tiktok/bundle-zip', downloadRateLimiter, async (req: Request, res
       res.status(400).json({ success: false, error: 'Danh sách rỗng' });
       return;
     }
+    if (items.length > 100) {
+      res.status(400).json({ success: false, error: 'Số lượng tệp vượt quá giới hạn cho phép (tối đa 100 tệp)' });
+      return;
+    }
     const zip = new JSZip();
     const finalZipName = (zipName || 'snaptikdou_bundle.zip').replace(/[^\w\d_.-]/gi, '_');
 
     await Promise.all(
       items.map(async (item) => {
         try {
+          if (!isSafeMediaUrl(item.url)) return;
           const fetchRes = await fetchMediaWithRetry(item.url, { isDouyin: isDouyinUrl(item.url) });
           if (fetchRes && fetchRes.ok) {
             const buffer = await fetchRes.arrayBuffer();
-            zip.file(item.relativePath.replace(/^\/+/, ''), buffer);
+            const safeRelativePath = item.relativePath
+              .replace(/\\/g, '/')
+              .split('/')
+              .filter((part) => part && part !== '.' && part !== '..')
+              .join('/');
+            if (safeRelativePath) {
+              zip.file(safeRelativePath, buffer);
+            }
           }
         } catch {}
       })

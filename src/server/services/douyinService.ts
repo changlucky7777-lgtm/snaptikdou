@@ -11,6 +11,7 @@ import {
   extractDouyinId,
   extractTikTokId,
   isDouyinUrl,
+  isTikTokUrl,
   normalizeMediaUrl,
 } from '../constants';
 import { smartFetch } from '../network';
@@ -18,6 +19,12 @@ import { getTtwid, reportInvalidTtwid } from '../ttwidManager';
 
 export async function resolveFinalUrl(rawUrl: string): Promise<string> {
   let currentUrl = extractCleanUrl(rawUrl);
+
+  // BẢO MẬT: Chỉ resolve URL nếu thuộc TikTok hoặc Douyin chính thống
+  if (!isDouyinUrl(currentUrl) && !isTikTokUrl(currentUrl)) {
+    return currentUrl;
+  }
+
   if (extractDouyinId(currentUrl) || extractTikTokId(currentUrl)) {
     return currentUrl;
   }
@@ -49,6 +56,9 @@ export async function resolveFinalUrl(rawUrl: string): Promise<string> {
           currentUrl = location;
         } else {
           currentUrl = new URL(location, currentUrl).toString();
+        }
+        if (!isDouyinUrl(currentUrl) && !isTikTokUrl(currentUrl)) {
+          return currentUrl;
         }
         if (extractDouyinId(currentUrl) || extractTikTokId(currentUrl)) {
           return currentUrl;

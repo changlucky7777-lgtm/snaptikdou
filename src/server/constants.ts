@@ -61,6 +61,54 @@ export function isTikTokUrl(url: string): boolean {
   return /tiktok\.com/i.test(url);
 }
 
+/**
+ * Danh sách domain whitelist cho media streaming & download
+ * Ngăn chặn tuyệt đối SSRF (Server-Side Request Forgery) và Private IP Access
+ */
+export const ALLOWED_MEDIA_DOMAINS = [
+  // ByteDance / Douyin CDN
+  'douyinvod.com',
+  'zjcdn.com',
+  'byteimg.com',
+  'snssdk.com',
+  'ixigua.com',
+  'pstatp.com',
+  'douyin.com',
+  'iesdouyin.com',
+  'bytedance.com',
+  'bdxiguaimg.com',
+  'bdxiguavod.com',
+  // TikTok CDN
+  'tiktokcdn.com',
+  'tiktokcdn-us.com',
+  'tiktokv.com',
+  'tiktokv.us',
+  'tiktok.com',
+  'byteoversea.com',
+  'ibyteimg.com',
+  'muscdn.com',
+  // Fallback services
+  'tikwm.com',
+  'ssstik.io',
+];
+
+function isHostnameInDomains(hostname: string, allowedDomains: string[]): boolean {
+  const host = hostname.toLowerCase();
+  return allowedDomains.some((domain) => host === domain || host.endsWith('.' + domain));
+}
+
+export function isSafeMediaUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+    return isHostnameInDomains(parsed.hostname, ALLOWED_MEDIA_DOMAINS);
+  } catch {
+    return false;
+  }
+}
+
 export function extractCleanUrl(rawInput: string): string {
   if (!rawInput || typeof rawInput !== 'string') return '';
   const match = rawInput.match(/https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/i);

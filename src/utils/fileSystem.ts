@@ -174,7 +174,12 @@ export async function createClientZipArchive(
     if (session?.isPaused) {
       await session.waitIfPaused();
     }
-    const normalizedPath = item.nameOrPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    const normalizedPath =
+      item.nameOrPath
+        .replace(/\\/g, '/')
+        .split('/')
+        .filter((part) => part && part !== '.' && part !== '..')
+        .join('/') || `file_${count + 1}`;
     if (onProgress) {
       onProgress(Math.round((count / items.length) * 90), normalizedPath);
     }
