@@ -19,9 +19,17 @@ import { getTtwid, reportInvalidTtwid } from '../ttwidManager';
 
 export async function resolveFinalUrl(rawUrl: string): Promise<string> {
   let currentUrl = extractCleanUrl(rawUrl);
-
-  // BẢO MẬT: Chỉ resolve URL nếu thuộc TikTok hoặc Douyin chính thống
-  if (!isDouyinUrl(currentUrl) && !isTikTokUrl(currentUrl)) {
+  
+  // BẢO MẬT: Kiểm tra nghiêm ngặt hostname ban đầu phải thuộc TikTok hoặc Douyin chính thống
+  try {
+    const initialParsed = new URL(currentUrl);
+    const isValidInitial = ['douyin.com', 'iesdouyin.com', 'tiktok.com'].some(
+      (domain) => initialParsed.hostname === domain || initialParsed.hostname.endsWith('.' + domain)
+    );
+    if (!isValidInitial) {
+      return currentUrl;
+    }
+  } catch {
     return currentUrl;
   }
 
@@ -39,9 +47,17 @@ export async function resolveFinalUrl(rawUrl: string): Promise<string> {
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         ...MOBILE_SAFARI_CLIENT_HINTS,
       };
+
+      // Chỉ đính kèm ttwid nếu request thực sự đi tới tên miền Douyin hợp lệ
       if (isDouyin && ttwid) {
-        headers['Cookie'] = `ttwid=${ttwid};`;
+        try {
+          const checkParsed = new URL(currentUrl);
+          if (checkParsed.hostname === 'douyin.com' || checkParsed.hostname.endsWith('.douyin.com') || checkParsed.hostname.endsWith('.iesdouyin.com')) {
+            headers['Cookie'] = `ttwid=${ttwid};`;
+          }
+        } catch {}
       }
+
       const res = await smartFetch(currentUrl, {
         method: 'GET',
         redirect: 'manual',
@@ -52,14 +68,29 @@ export async function resolveFinalUrl(rawUrl: string): Promise<string> {
 
       const location = res.headers.get('location');
       if (location && res.status >= 300 && res.status < 400) {
+        let nextUrl = '';
         if (location.startsWith('http')) {
-          currentUrl = location;
+          nextUrl = location;
         } else {
-          currentUrl = new URL(location, currentUrl).toString();
+          nextUrl = new URL(location, currentUrl).toString();
         }
-        if (!isDouyinUrl(currentUrl) && !isTikTokUrl(currentUrl)) {
-          return currentUrl;
+
+        // BẢO MẬT: Kiểm tra URL đích của bước chuyển hướng (Redirect Validation)
+        try {
+          const nextParsed = new URL(nextUrl);
+          const isNextValid = ['douyin.com', 'iesdouyin.com', 'tiktok.com'].some(
+            (domain) => nextParsed.hostname === domain || nextParsed.hostname.endsWith('.' + domain)
+          );
+          // Nếu bước redirect nhảy ra ngoài tên miền hợp lệ (nguy cơ Open Redirect / SSRF), dừng ngay lập tức
+          if (!isNextValid) {
+            break;
+          }
+        } catch {
+          break;
         }
+
+        currentUrl = nextUrl;
+
         if (extractDouyinId(currentUrl) || extractTikTokId(currentUrl)) {
           return currentUrl;
         }
@@ -70,6 +101,7 @@ export async function resolveFinalUrl(rawUrl: string): Promise<string> {
       break;
     }
   }
+
   return currentUrl;
 }
 
