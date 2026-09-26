@@ -7,19 +7,15 @@ class MemoryCacheManager<T = any> {
   private cache = new Map<string, CacheEntry<T>>();
   private maxItems: number;
   private defaultTtlMs: number;
-  private _cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(maxItems = 400, defaultTtlMs = 8 * 60 * 1000) {
     this.maxItems = maxItems;
     this.defaultTtlMs = defaultTtlMs;
 
-    this._cleanupInterval = setInterval(() => {
-      this.cleanup();
-    }, 10 * 60 * 1000);
-  }
-
-  cleanup(): void {
-    this.purgeExpired();
+    // Dọn dẹp các bản ghi hết hạn mỗi 3 phút
+    setInterval(() => {
+      this.purgeExpired();
+    }, 3 * 60 * 1000);
   }
 
   get(key: string): T | null {
@@ -41,10 +37,7 @@ class MemoryCacheManager<T = any> {
   }
 
   set(key: string, data: T, ttlMs?: number): void {
-    if (!key) return;
-    if (data === undefined || data === null) {
-      return;
-    }
+    if (!key || !data) return;
 
     // Kiểm tra giới hạn số lượng mục để bảo vệ RAM
     if (this.cache.size >= this.maxItems) {

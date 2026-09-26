@@ -20,7 +20,7 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
   const [isPasted, setIsPasted] = useState(false);
   const [detectedLink, setDetectedLink] = useState<string | null>(null);
   const lastCheckedClipboardRef = useRef<string>('');
-  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissTimerRef = useRef<any>(null);
 
   // Hàm quét Clipboard thông minh
   const checkClipboard = async () => {
