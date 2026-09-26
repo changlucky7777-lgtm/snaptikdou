@@ -448,7 +448,7 @@ export async function streamFetchBlob(
     }
 
     const controller = session ? session.abortController : new AbortController();
-    let timer: any = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     if (!session) {
       timer = setTimeout(() => {
         controller.abort(new DOMException(`Request timed out after ${timeoutMs}ms`, 'TimeoutError'));
