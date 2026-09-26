@@ -7,16 +7,16 @@ export async function extractTikTokOfficial(videoId: string) {
     try {
       const feedUrl = `https://${host}/aweme/v1/feed/?aweme_id=${videoId}&version_name=1.1.9&version_code=2018111632&build_number=1.1.9&device_platform=android&os_version=10`;
       const res = await fetch(feedUrl, {
-        method: 'OPTIONS',
+        method: 'GET',
         headers: {
           'User-Agent':
             'com.zhiliaoapp.musically/300904 (2018111632; U; Android 10; en_US; Pixel 4; Build/QQ3A.200805.001; Cronet/58.0.2991.0)',
-          Accept: '*/*',
+          Accept: 'application/json, text/plain, */*',
         },
         signal: AbortSignal.timeout(5000),
       });
 
-      if (!res.ok && res.status !== 200) continue;
+      if (!res.ok) continue;
       const buf = Buffer.from(await res.arrayBuffer());
       if (!buf || buf.length === 0) continue;
 

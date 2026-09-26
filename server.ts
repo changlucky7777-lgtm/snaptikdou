@@ -40,7 +40,8 @@ interface ActiveDownloadSession {
 }
 const activeDownloadSessions = new Map<string, ActiveDownloadSession>();
 
-setInterval(() => {
+// Khắc phục lỗi #13: Lưu reference setInterval để xử lý cleanup khi server ngắt
+const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [token, session] of activeDownloadSessions.entries()) {
     if (now - session.lastActive > 15 * 60 * 1000) {
@@ -48,6 +49,10 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+process.on('SIGTERM', () => {
+  clearInterval(cleanupInterval);
+});
 
 function setSessionActive(token?: string, isActive: boolean = true) {
   if (!token) return;
@@ -137,13 +142,24 @@ app.post('/api/tiktok/extract', extractRateLimiter, async (req: Request, res: Re
   }
 });
 
-// Fetch media with retry
+// Bổ sung đọc backupUrls trong fetchMediaWithRetry
 async function fetchMediaWithRetry(
   targetUrl: string,
-  options: { isDouyin: boolean; range?: string }
+  options: { isDouyin: boolean; range?: string; backupUrls?: string[] }
 ): Promise<globalThis.Response | null> {
-  const url = normalizeMediaUrl(targetUrl);
-  if (!url) return null;
+  const primaryUrl = normalizeMediaUrl(targetUrl);
+  const candidateUrls: string[] = [];
+  if (primaryUrl) candidateUrls.push(primaryUrl);
+  
+  if (Array.isArray(options.backupUrls)) {
+    for (const bUrl of options.backupUrls) {
+      const norm = normalizeMediaUrl(bUrl);
+      if (norm && !candidateUrls.includes(norm)) candidateUrls.push(norm);
+    }
+  }
+
+  if (candidateUrls.length === 0) return null;
+
   const userAgent = options.isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
   const referer = options.isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
   let cookieHeader = '';
@@ -154,15 +170,9 @@ async function fetchMediaWithRetry(
     } catch {}
   }
 
-  const candidateUrls: string[] = [url];
-  if (options.isDouyin && url.includes('playwm')) {
-    const sanitized = url.replace('/playwm/', '/play/').replace(/playwm/g, 'play');
-    if (!candidateUrls.includes(sanitized)) candidateUrls.push(sanitized);
-  }
-
   const CONNECT_TIMEOUT = 8000;
   for (const candidate of candidateUrls) {
-    const isCdnUrl = /douyinvod\.com|zjcdn\.com|byteimg\.com|snssdk\.com|ixigua\.com|pstatp\.com/i.test(candidate);
+    const isCdnUrl = /douyinvod\.com|zjcdn\.com|byteimg\.com|tiktokcdn\.com|snssdk\.com|ixigua\.com|pstatp\.com/i.test(candidate);
     const candidateCookie = isCdnUrl ? '' : cookieHeader;
 
     try {
@@ -335,9 +345,10 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
 
     const isDouyin = checkIsDouyin(targetVideoUrl) || checkIsDouyin(postUrl || '');
     const requestedRange = req.headers.range as string | undefined;
+    const backupUrls = [fallbackUrl, videoFallback].filter((u) => Boolean(u) && u !== targetVideoUrl);
     
     // Gửi request tới upstream CDN kèm Range header nếu có
-    const mediaResponse = await fetchMediaWithRetry(targetVideoUrl, { isDouyin, range: requestedRange });
+    const mediaResponse = await fetchMediaWithRetry(targetVideoUrl, { isDouyin, range: requestedRange, backupUrls });
 
     if (!isValidMediaResponse(mediaResponse) || !mediaResponse?.body) {
       res.status(502).json({ success: false, error: 'Máy chủ nguồn tạm thời chặn luồng tải video.' });
@@ -360,17 +371,19 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
     const upstreamRange = mediaResponse.headers.get('content-range');
     if (upstreamRange) res.setHeader('Content-Range', upstreamRange);
 
-    // Tối ưu ống đệm TCP & socket cho việc truyền tải tệp lớn
-    if (res.socket) {
-      res.socket.setNoDelay(true);
-    }
+    setSessionActive(downloadToken, true);
+    res.on('close', () => {
+      if (!res.writableEnded) setSessionActive(downloadToken, false);
+    });
 
     const streamToPipe =
       typeof (mediaResponse.body as any)?.getReader === 'function'
-        ? Readable.fromWeb(mediaResponse.body as any, { highWaterMark: 1024 * 1024 })
+        ? Readable.fromWeb(mediaResponse.body as any)
         : mediaResponse.body;
 
+    res.socket?.setNoDelay(true);
     await pipeline(streamToPipe as any, res);
+    setSessionCompleted(downloadToken); // Khắc phục lỗi High #2
   } catch (err: any) {
     if (!res.headersSent) res.status(502).json({ success: false, error: 'Lỗi tải xuống tập tin video' });
     else if (!res.writableEnded) res.end();
@@ -401,8 +414,12 @@ app.post('/api/tiktok/bundle-zip', downloadRateLimiter, async (req: Request, res
     );
 
     const zipContent = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    const cleanZipBase = (zipName || 'snaptikdou_bundle.zip').replace(/[^\w\d_.-]/gi, '_');
+    const safeZipFilename = cleanZipBase.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'snaptikdou_bundle.zip';
+    const encodedZipFilename = encodeURIComponent(cleanZipBase);
+
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${finalZipName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeZipFilename}"; filename*=UTF-8''${encodedZipFilename}`);
     res.setHeader('Content-Length', zipContent.length.toString());
     res.send(zipContent);
   } catch (error: any) {
