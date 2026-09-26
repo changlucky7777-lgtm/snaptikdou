@@ -196,10 +196,17 @@ async function fetchMediaWithRetry(
  * - Sử dụng đa luồng CPU tối đa (-threads 0) để duy trì tốc độ truyền tải cao
  */
 function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string, downloadToken?: string) {
+  // BẢO MẬT: Kiểm tra URL bắt buộc thuộc CDN an toàn trước khi truyền vào FFmpeg
+  if (!isSafeMediaUrl(videoUrl)) {
+    res.status(400).json({ success: false, message: 'URL video không hợp lệ hoặc không an toàn' });
+    return;
+  }
+
   const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
   const finalFilename = `${baseName}.mp3`;
   const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.mp3';
   const encodedFilename = encodeURIComponent(finalFilename);
+
   const isDouyin = /douyin|byteimg|zjcdn|ixigua/i.test(videoUrl);
   const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
   const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
@@ -210,27 +217,27 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
   res.setHeader('Accept-Ranges', 'bytes');
 
   const ffmpegHeaders = `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`;
-
   const command = ffmpeg()
     .input(videoUrl)
     .inputOptions([
+      // BẢO MẬT: Chỉ cho phép các giao thức mạng http/https/tcp/tls, chặn tuyệt đối file://, pipe, concat
+      '-protocol_whitelist', 'http,https,tcp,tls',
       '-headers', ffmpegHeaders,
       '-reconnect', '1',
       '-reconnect_at_eof', '1',
       '-reconnect_streamed', '1',
       '-reconnect_delay_max', '5',
       '-rw_timeout', '15000000',
-      // Giảm thời gian dò tìm stream xuống dưới 1s để không bị đơ 15-20 giây lúc bắt đầu
-      '-probesize', '1048576',      // 1MB probe
-      '-analyzeduration', '1000000', // 1s analyze
+      '-probesize', '1048576',
+      '-analyzeduration', '1000000',
     ])
     .noVideo()
     .audioCodec('libmp3lame')
     .audioBitrate('128k')
     .outputOptions([
-      '-threads', '1',        // // Khống chế mỗi request chỉ dùng 1 luồng CPU, an toàn tuyệt đối khi có tải cao
-      '-id3v2_version', '3',   // Header ID3 chuẩn quốc tế
-      '-write_xing', '0',      // Không ghi header độ dài biến thiên để stream mượt
+      '-threads', '1',
+      '-id3v2_version', '3',
+      '-write_xing', '0',
     ])
     .format('mp3');
 
@@ -296,8 +303,13 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
     // ==========================================
     if (isMp3Request) {
       const directAudioUrl = rawUrl || fallbackUrl;
-      // Nếu có link nhạc trực tiếp và không phải đuôi mp4
       if (directAudioUrl && !directAudioUrl.includes('.mp4')) {
+        // BẢO MẬT: Kiểm tra URL trực tiếp
+        if (!isSafeMediaUrl(directAudioUrl)) {
+          res.status(400).json({ success: false, message: 'URL audio không hợp lệ hoặc không an toàn' });
+          return;
+        }
+
         const isDouyinAudio = checkIsDouyin(directAudioUrl) || checkIsDouyin(postUrl);
         const audioResponse = await fetchMediaWithRetry(directAudioUrl, { isDouyin: isDouyinAudio });
         if (isValidMediaResponse(audioResponse) && audioResponse?.body) {
@@ -327,9 +339,13 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
         }
       }
 
-      // Nếu không có link nhạc riêng, transcode từ video sang MP3
       const transcodeSource = videoFallback || rawUrl || fallbackUrl;
       if (transcodeSource) {
+        // BẢO MẬT: Kiểm tra URL nguồn transcode
+        if (!isSafeMediaUrl(transcodeSource)) {
+          res.status(400).json({ success: false, message: 'URL nguồn video không hợp lệ hoặc không an toàn' });
+          return;
+        }
         return transcodeVideoToMp3Stream(transcodeSource, res, requestedFilename, downloadToken);
       }
       return res.status(404).json({ success: false, message: 'Không tìm thấy nguồn audio' });
