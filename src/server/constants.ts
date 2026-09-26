@@ -66,7 +66,7 @@ export function isTikTokUrl(url: string): boolean {
  * Ngăn chặn tuyệt đối SSRF (Server-Side Request Forgery) và Private IP Access
  */
 export const ALLOWED_MEDIA_DOMAINS = [
-  // ByteDance / Douyin CDN
+  // ByteDance / Douyin / Xigua CDN & Media hosts
   'douyinvod.com',
   'zjcdn.com',
   'byteimg.com',
@@ -78,6 +78,8 @@ export const ALLOWED_MEDIA_DOMAINS = [
   'bytedance.com',
   'bdxiguaimg.com',
   'bdxiguavod.com',
+  'bytegecko.com',
+  'toutiaoimg.com',
   // TikTok CDN
   'tiktokcdn.com',
   'tiktokcdn-us.com',
@@ -87,7 +89,7 @@ export const ALLOWED_MEDIA_DOMAINS = [
   'byteoversea.com',
   'ibyteimg.com',
   'muscdn.com',
-  // Fallback services
+  // Fallback services & Proxies
   'tikwm.com',
   'ssstik.io',
 ];
