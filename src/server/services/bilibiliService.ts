@@ -1,10 +1,9 @@
-import { extractCleanUrl, extractBilibiliId, normalizeMediaUrl, TIKTOK_USER_AGENT } from '../constants';
+import { extractCleanUrl, extractBilibiliId, normalizeMediaUrl, TIKTOK_USER_AGENT, CHROME_DESKTOP_CLIENT_HINTS } from '../constants';
 import { smartFetch } from '../network';
 
 // Lớp 1: Gọi API trực tiếp của Bilibili kèm cookie buvid3
 async function extractBilibiliDirectApi(bvid: string, originalUrl: string) {
   try {
-    // Lấy cookie buvid3 trước
     const initRes = await smartFetch('https://www.bilibili.com', {
       headers: { 'User-Agent': TIKTOK_USER_AGENT },
       timeout: 4000,
@@ -158,7 +157,66 @@ async function extractBilibiliHtmlSSR(bvid: string, originalUrl: string) {
   }
 }
 
-// Hàm tổng hợp điều phối đa tầng
+// Lớp 3: Sử dụng dịch vụ API dự phòng chuyên giải mã Bilibili
+async function extractBilibiliFallbackApi(targetUrl: string, originalUrl: string) {
+  try {
+    const res = await smartFetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(targetUrl)}&hd=1`, {
+      headers: {
+        'User-Agent': TIKTOK_USER_AGENT,
+        ...CHROME_DESKTOP_CLIENT_HINTS,
+      },
+      timeout: 6000,
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.code === 0 && json.data) {
+        const data = json.data;
+        return {
+          id: String(data.id || Date.now()),
+          url: originalUrl,
+          title: data.title || 'Bilibili Video',
+          mediaType: 'video' as const,
+          cover: normalizeMediaUrl(data.cover || data.origin_cover),
+          duration: data.duration || 0,
+          createdAt: new Date().toISOString(),
+          author: {
+            id: String(data.author?.id || ''),
+            uniqueId: data.author?.unique_id || 'bilibili_user',
+            nickname: data.author?.nickname || 'Bilibili Creator',
+            avatar: normalizeMediaUrl(data.author?.avatar),
+          },
+          stats: {
+            plays: data.play_count || 0,
+            likes: data.digg_count || 0,
+            comments: data.comment_count || 0,
+            shares: data.share_count || 0,
+            downloads: data.download_count || 0,
+          },
+          video: {
+            noWatermark: normalizeMediaUrl(data.play),
+            hd: normalizeMediaUrl(data.hdplay || data.play),
+            watermark: '',
+            size: data.size || 0,
+            hdSize: data.hd_size || 0,
+            backupUrls: [normalizeMediaUrl(data.hdplay), normalizeMediaUrl(data.play)].filter(Boolean),
+          },
+          audio: {
+            id: '',
+            title: data.title || 'Bilibili Audio',
+            author: data.author?.nickname || '',
+            url: normalizeMediaUrl(data.music || data.play),
+            duration: data.duration || 0,
+          },
+          images: [],
+          platform: 'bilibili' as const,
+        };
+      }
+    }
+  } catch {}
+  return null;
+}
+
+// Hàm tổng hợp điều phối đa tầng bao gồm cả Fallback API
 export async function extractFromBilibili(bilibiliUrl: string): Promise<any> {
   const cleanUrl = extractCleanUrl(bilibiliUrl) || bilibiliUrl;
   let bvid = extractBilibiliId(cleanUrl);
@@ -172,16 +230,17 @@ export async function extractFromBilibili(bilibiliUrl: string): Promise<any> {
     } catch {}
   }
 
-  if (!bvid) {
-    throw new Error('Không thể tìm thấy mã định danh BVID hợp lệ trong liên kết Bilibili.');
+  // Thử tầng dự phòng API bên thứ ba trước để đảm bảo tốc độ và tỷ lệ thành công cao nhất
+  const fallbackResult = await extractBilibiliFallbackApi(targetUrl, cleanUrl);
+  if (fallbackResult) return fallbackResult;
+
+  if (bvid) {
+    const layer1 = await extractBilibiliDirectApi(bvid, targetUrl);
+    if (layer1) return layer1;
+
+    const layer2 = await extractBilibiliHtmlSSR(bvid, targetUrl);
+    if (layer2) return layer2;
   }
 
-  // Thử lần lượt các tầng
-  const layer1 = await extractBilibiliDirectApi(bvid, targetUrl);
-  if (layer1) return layer1;
-
-  const layer2 = await extractBilibiliHtmlSSR(bvid, targetUrl);
-  if (layer2) return layer2;
-
-  throw new Error('Không thể trích xuất video Bilibili từ tất cả các luồng phân giải.');
+  throw new Error('Không thể trích xuất video Bilibili. Vui lòng kiểm tra lại liên kết.');
 }
