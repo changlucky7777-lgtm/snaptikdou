@@ -160,7 +160,7 @@ export default function App() {
       window.alert(t('alertEmptyLink'));
       return;
     }
-    const isValidUrl = /(tiktok\.com|douyin\.com|iesdouyin\.com)/i.test(trimmedUrl);
+    const isValidUrl = /(tiktok\.com|douyin\.com|iesdouyin\.com|bilibili\.com|b23\.tv)/i.test(trimmedUrl);
     if (!isValidUrl) {
       window.alert(t('alertInvalidLink'));
       return;

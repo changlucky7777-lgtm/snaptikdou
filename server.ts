@@ -14,6 +14,7 @@ import {
   extractTikTokId,
   isDouyinUrl,
   isTikTokUrl,
+  isBilibiliUrl,
   isSafeMediaUrl,
   normalizeMediaUrl,
 } from './src/server/constants';
@@ -21,6 +22,7 @@ import { fetchWithConnectTimeout, isValidMediaResponse } from './src/server/netw
 import { getTtwid } from './src/server/ttwidManager';
 import { resolveFinalUrl, extractFromDouyin } from './src/server/services/douyinService';
 import { extractFromTikTok } from './src/server/services/tiktokService';
+import { extractFromBilibili } from './src/server/services/bilibiliService';
 import { mediaExtractCache } from './src/server/cacheManager';
 import { extractRateLimiter, downloadRateLimiter } from './src/server/rateLimiter';
 
@@ -85,21 +87,33 @@ app.get('/api/health', (_req: Request, res: Response) => {
   });
 });
 
-// Endpoint Extract TikTok / Douyin
+// Endpoint Extract TikTok / Douyin / Bilibili
 app.post('/api/tiktok/extract', extractRateLimiter, async (req: Request, res: Response) => {
   try {
     const { url } = req.body;
     if (!url || typeof url !== 'string') {
-      res.status(400).json({ success: false, message: 'Vui lòng cung cấp link TikTok hoặc Douyin hợp lệ' });
+      res.status(400).json({ success: false, message: 'Vui lòng cung cấp liên kết hợp lệ' });
       return;
     }
     const trimmedUrl = url.trim();
     const cleanTargetUrl = extractCleanUrl(trimmedUrl);
+
+    // Kiểm tra nếu là liên kết Bilibili
+    if (isBilibiliUrl(cleanTargetUrl) || isBilibiliUrl(trimmedUrl)) {
+      const bilibiliData = await extractFromBilibili(cleanTargetUrl || trimmedUrl);
+      if (bilibiliData) {
+        if (bilibiliData.id) mediaExtractCache.set(`media_${bilibiliData.id}`, bilibiliData);
+        mediaExtractCache.set(`url_${cleanTargetUrl}`, bilibiliData);
+        return res.json({ success: true, data: bilibiliData });
+      }
+      return res.status(422).json({ success: false, message: 'Không thể trích xuất video Bilibili.' });
+    }
+
     const isDouyin = isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
     const isTikTok = isTikTokUrl(cleanTargetUrl) || isTikTokUrl(trimmedUrl);
 
     if (!isDouyin && !isTikTok) {
-      res.status(400).json({ success: false, message: 'URL không thuộc TikTok hoặc Douyin' });
+      res.status(400).json({ success: false, message: 'URL không thuộc TikTok, Douyin hoặc Bilibili' });
       return;
     }
 

@@ -34,8 +34,8 @@ export const UrlInputBar: React.FC<UrlInputBarProps> = ({
         return;
       }
 
-      // Kiểm tra có phải link TikTok / Douyin
-      const isMediaUrl = /(tiktok\.com|douyin\.com|iesdouyin\.com)/i.test(trimmed);
+      // Kiểm tra có phải link TikTok / Douyin / Bilibili
+      const isMediaUrl = /(tiktok\.com|douyin\.com|iesdouyin\.com|bilibili\.com|b23\.tv)/i.test(trimmed);
       if (isMediaUrl) {
         setDetectedLink(trimmed);
         

@@ -43,7 +43,7 @@ export interface TikTokMediaItem {
   video: TikTokVideo;
   audio: TikTokAudio;
   images: string[];
-  platform?: 'tiktok' | 'douyin';
+  platform?: 'tiktok' | 'douyin' | 'bilibili';
   isPartial?: boolean;
   warning?: string;
 }
