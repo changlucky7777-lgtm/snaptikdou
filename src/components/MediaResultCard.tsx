@@ -93,7 +93,7 @@ export const MediaResultCard: React.FC<MediaResultCardProps> = ({
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="text-xs text-[var(--text-secondary)] truncate">@{media.author?.uniqueId}</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--badge-bg)] text-[var(--badge-text)] font-medium border border-[var(--border-subtle)]">
-                {media.platform === 'bilibili' ? t('platformBilibili', 'Bilibili') : media.platform === 'douyin' ? t('platformDouyin', 'Douyin') : t('platformTiktok', 'TikTok')}
+                {media.platform === 'douyin' ? 'Douyin' : 'TikTok'}
               </span>
             </div>
           </div>
