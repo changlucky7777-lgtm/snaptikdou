@@ -61,11 +61,12 @@ export function isTikTokUrl(url: string): boolean {
   return /tiktok\.com/i.test(url);
 }
 
-// Thêm các domain Bilibili vào ALLOWED_MEDIA_DOMAINS
 export const ALLOWED_MEDIA_DOMAINS = [
   'douyin.com',
   'iesdouyin.com',
   'douyinvod.com',
+  'douyinstatic.com',
+  'douyinpic.com',
   'byteimg.com',
   'zjcdn.com',
   'snssdk.com',
@@ -75,22 +76,9 @@ export const ALLOWED_MEDIA_DOMAINS = [
   'tiktokcdn.com',
   'tiktokv.com',
   'tikwm.com',
-  'bilivideo.com',
-  'hdslb.com',
-  'bilibili.com',
-  'b23.tv',
+  'ibytedtos.com',
+  'byteoversea.com',
 ];
-
-// Hàm nhận diện URL Bilibili
-export function isBilibiliUrl(url: string): boolean {
-  return /bilibili\.com|b23\.tv/i.test(url);
-}
-
-export function extractBilibiliId(urlOrText: string): string | null {
-  if (!urlOrText || typeof urlOrText !== 'string') return null;
-  const match = urlOrText.match(/(BV[1-9A-Za-z]{10}|av\d+)/i);
-  return match ? match[1] : null;
-}
 
 export function isSafeMediaUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false;

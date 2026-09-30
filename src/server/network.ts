@@ -194,7 +194,7 @@ export async function fetchWithConnectTimeout(
   };
 
   // CDN media của Douyin/TikTok không khóa IP, không cho đi qua WARP proxy để tránh bị bóp băng thông
-  const isCdnUrl = /douyinvod\.com|zjcdn\.com|byteimg\.com|tiktokcdn\.com|snssdk\.com\/video|ixigua\.com|pstatp\.com/i.test(url);
+  const isCdnUrl = /douyinvod\.com|zjcdn\.com|douyinstatic\.com|douyinpic\.com|byteimg\.com|tiktokcdn\.com|snssdk\.com\/video|ixigua\.com|pstatp\.com|ibytedtos\.com|byteoversea\.com/i.test(url);
 
   if (!isCdnUrl && warpAgent) {
     try {
