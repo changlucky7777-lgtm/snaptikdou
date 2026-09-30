@@ -234,16 +234,16 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
   const command = ffmpeg()
     .input(videoUrl)
     .inputOptions([
-      // BẢO MẬT: Chỉ cho phép các giao thức mạng http/https/tcp/tls, chặn tuyệt đối file://, pipe, concat
       '-protocol_whitelist', 'http,https,tcp,tls',
       '-headers', ffmpegHeaders,
       '-reconnect', '1',
       '-reconnect_at_eof', '1',
       '-reconnect_streamed', '1',
       '-reconnect_delay_max', '5',
-      '-rw_timeout', '15000000',
-      '-probesize', '1048576',
-      '-analyzeduration', '1000000',
+      '-rw_timeout', '20000000',
+      // Tăng probesize và analyzeduration để hỗ trợ tốt cho file dung lượng nhỏ / video ngắn
+      '-probesize', '5000000',       
+      '-analyzeduration', '3000000',  
     ])
     .noVideo()
     .audioCodec('libmp3lame')
