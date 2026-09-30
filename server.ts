@@ -90,28 +90,31 @@ app.post('/api/tiktok/extract', extractRateLimiter, async (req: Request, res: Re
   try {
     const { url } = req.body;
     if (!url || typeof url !== 'string') {
-      res.status(400).json({ success: false, message: 'Vui lòng cung cấp link' });
+      res.status(400).json({ success: false, message: 'Vui lòng cung cấp link TikTok hoặc Douyin hợp lệ' });
       return;
     }
     const trimmedUrl = url.trim();
     const cleanTargetUrl = extractCleanUrl(trimmedUrl);
-
     const isDouyin = isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
     const isTikTok = isTikTokUrl(cleanTargetUrl) || isTikTokUrl(trimmedUrl);
+
     if (!isDouyin && !isTikTok) {
       res.status(400).json({ success: false, message: 'URL không thuộc TikTok hoặc Douyin' });
       return;
     }
 
+    // Kiểm tra In-Memory LRU Cache
     const fastId = extractTikTokId(cleanTargetUrl) || extractTikTokId(trimmedUrl);
     const cacheKey = fastId ? `media_${fastId}` : `url_${cleanTargetUrl}`;
     const cachedData = mediaExtractCache.get(cacheKey);
+
     if (cachedData) {
       return res.json({ success: true, data: cachedData, fromCache: true });
     }
 
     const resolvedUrl = await resolveFinalUrl(cleanTargetUrl || trimmedUrl);
     const targetIsDouyin = isDouyinUrl(resolvedUrl) || isDouyinUrl(cleanTargetUrl) || isDouyinUrl(trimmedUrl);
+
     if (targetIsDouyin) {
       const douyinData = await extractFromDouyin(cleanTargetUrl || trimmedUrl, resolvedUrl);
       if (douyinData && (douyinData.video?.noWatermark || douyinData.images?.length > 0)) {
@@ -127,10 +130,12 @@ app.post('/api/tiktok/extract', extractRateLimiter, async (req: Request, res: Re
 
     const tiktokId = extractTikTokId(resolvedUrl) || extractTikTokId(trimmedUrl);
     const tiktokData = await extractFromTikTok(resolvedUrl, tiktokId);
+
     if (tiktokData) {
       if (tiktokData.id) mediaExtractCache.set(`media_${tiktokData.id}`, tiktokData);
       mediaExtractCache.set(`url_${cleanTargetUrl}`, tiktokData);
     }
+
     return res.json({ success: true, data: tiktokData });
   } catch (error: any) {
     const msg = error?.message || 'Lỗi khi trích xuất thông tin media. Vui lòng kiểm tra lại link.';
@@ -168,7 +173,7 @@ async function fetchMediaWithRetry(
 
   const CONNECT_TIMEOUT = 8000;
   for (const candidate of candidateUrls) {
-    const isCdnUrl = /douyinvod\.com|zjcdn\.com|douyinstatic\.com|douyinpic\.com|byteimg\.com|tiktokcdn\.com|snssdk\.com\/video|ixigua\.com|pstatp\.com|ibytedtos\.com|byteoversea\.com/i.test(candidate);
+    const isCdnUrl = /douyinvod\.com|zjcdn\.com|byteimg\.com|tiktokcdn\.com|snssdk\.com|ixigua\.com|pstatp\.com/i.test(candidate);
     const candidateCookie = isCdnUrl ? '' : cookieHeader;
 
     try {
@@ -191,57 +196,50 @@ async function fetchMediaWithRetry(
  * - Sử dụng đa luồng CPU tối đa (-threads 0) để duy trì tốc độ truyền tải cao
  */
 function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: string, downloadToken?: string) {
-  if (!isSafeMediaUrl(videoUrl)) {
-    res.status(400).json({ success: false, message: 'URL video không an toàn' });
-    return;
-  }
   const baseName = filename.replace(/\.(mp3|mp4|m4a|aac)$/i, '');
   const finalFilename = `${baseName}.mp3`;
   const safeFilename = finalFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.mp3';
   const encodedFilename = encodeURIComponent(finalFilename);
+  const isDouyin = /douyin|byteimg|zjcdn|ixigua/i.test(videoUrl);
+  const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
+  const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
 
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Accept-Ranges', 'bytes');
 
-  // Không gửi kèm Header Referer cứng khi transcode từ CDN trực tiếp để tránh lỗi 403 Forbidden
-  const isCdnDirect = /douyinvod\.com|byteimg\.com|tiktokcdn\.com|ibytedtos\.com/i.test(videoUrl);
-  const ffmpegInputOptions = [
-    '-protocol_whitelist', 'http,https,tcp,tls',
-    '-reconnect', '1',
-    '-reconnect_at_eof', '1',
-    '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '5',
-    '-rw_timeout', '20000000',
-    '-probesize', '5000000',
-    '-analyzeduration', '3000000',
-  ];
-
-  if (!isCdnDirect) {
-    const isDouyin = /douyin|byteimg|zjcdn|ixigua/i.test(videoUrl);
-    const userAgent = isDouyin ? DOUYIN_USER_AGENT : TIKTOK_USER_AGENT;
-    const referer = isDouyin ? 'https://www.douyin.com/' : 'https://www.tiktok.com/';
-    ffmpegInputOptions.push('-headers', `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`);
-  }
+  const ffmpegHeaders = `User-Agent: ${userAgent}\r\nReferer: ${referer}\r\n`;
 
   const command = ffmpeg()
     .input(videoUrl)
-    .inputOptions(ffmpegInputOptions)
+    .inputOptions([
+      '-headers', ffmpegHeaders,
+      '-reconnect', '1',
+      '-reconnect_at_eof', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-rw_timeout', '15000000',
+      // Giảm thời gian dò tìm stream xuống dưới 1s để không bị đơ 15-20 giây lúc bắt đầu
+      '-probesize', '1048576',      // 1MB probe
+      '-analyzeduration', '1000000', // 1s analyze
+    ])
     .noVideo()
     .audioCodec('libmp3lame')
     .audioBitrate('128k')
     .outputOptions([
-      '-threads', '1',
-      '-id3v2_version', '3',
-      '-write_xing', '0',
+      '-threads', '1',        // // Khống chế mỗi request chỉ dùng 1 luồng CPU, an toàn tuyệt đối khi có tải cao
+      '-id3v2_version', '3',   // Header ID3 chuẩn quốc tế
+      '-write_xing', '0',      // Không ghi header độ dài biến thiên để stream mượt
     ])
     .format('mp3');
 
   setSessionActive(downloadToken, true);
+
   command.on('end', () => {
     setSessionCompleted(downloadToken);
   });
+
   command.on('error', (_err) => {
     setSessionActive(downloadToken, false);
     if (!res.headersSent) {
@@ -250,6 +248,7 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
       res.end();
     }
   });
+
   res.on('close', () => {
     try {
       command.kill('SIGKILL');
@@ -258,6 +257,7 @@ function transcodeVideoToMp3Stream(videoUrl: string, res: Response, filename: st
       setSessionActive(downloadToken, false);
     }
   });
+
   res.socket?.setNoDelay(true);
   command.pipe(res, { end: true });
 }
@@ -289,18 +289,47 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
 
     const checkIsDouyin = (u: string) =>
       Boolean(u) &&
-      (isDouyinUrl(u) || /zjcdn\.com|douyinvod\.com|douyinstatic\.com|douyinpic\.com|byteimg\.com|douyin\.com|snssdk\.com|ixigua\.com|ibytedtos\.com|byteoversea\.com/i.test(u));
+      (isDouyinUrl(u) || /zjcdn\.com|douyinvod\.com|byteimg\.com|douyin\.com|snssdk\.com|ixigua\.com/i.test(u));
 
     // ==========================================
     // 1. LUỒNG XỬ LÝ ÂM THANH (AUDIO / MP3)
     // ==========================================
     if (isMp3Request) {
-      const transcodeSource = videoFallback || rawUrl || fallbackUrl;
-      if (transcodeSource) {
-        if (!isSafeMediaUrl(transcodeSource)) {
-          res.status(400).json({ success: false, message: 'URL nguồn video không an toàn' });
+      const directAudioUrl = rawUrl || fallbackUrl;
+      // Nếu có link nhạc trực tiếp và không phải đuôi mp4
+      if (directAudioUrl && !directAudioUrl.includes('.mp4')) {
+        const isDouyinAudio = checkIsDouyin(directAudioUrl) || checkIsDouyin(postUrl);
+        const audioResponse = await fetchMediaWithRetry(directAudioUrl, { isDouyin: isDouyinAudio });
+        if (isValidMediaResponse(audioResponse) && audioResponse?.body) {
+          const safeFilename = requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.mp3';
+          const encodedFilename = encodeURIComponent(requestedFilename);
+          res.setHeader('Content-Type', 'audio/mpeg');
+          res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Accept-Ranges', 'bytes');
+          const upstreamLength = audioResponse.headers.get('content-length');
+          if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
+
+          setSessionActive(downloadToken, true);
+          res.on('close', () => {
+            if (!res.writableEnded) setSessionActive(downloadToken, false);
+          });
+          if (res.socket) {
+            res.socket.setNoDelay(true);
+          }
+          const streamToPipe =
+            typeof (audioResponse.body as any)?.getReader === 'function'
+              ? Readable.fromWeb(audioResponse.body as any, { highWaterMark: 512 * 1024 })
+              : audioResponse.body;
+          await pipeline(streamToPipe as any, res);
+          setSessionCompleted(downloadToken);
           return;
         }
+      }
+
+      // Nếu không có link nhạc riêng, transcode từ video sang MP3
+      const transcodeSource = videoFallback || rawUrl || fallbackUrl;
+      if (transcodeSource) {
         return transcodeVideoToMp3Stream(transcodeSource, res, requestedFilename, downloadToken);
       }
       return res.status(404).json({ success: false, message: 'Không tìm thấy nguồn audio' });

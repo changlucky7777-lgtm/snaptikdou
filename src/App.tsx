@@ -631,8 +631,8 @@ export default function App() {
               {t('sloganSub')}
             </p>
             <div className="text-xs pt-1">
-              <span className="text-[#1C1C1E]">Email: </span>
-              <a href="mailto:snaptikdou@gmail.com" className="text-[#1C1C1E] hover:text-[var(--accent-blue)] font-medium hover:underline">
+              <span>Email: </span>
+              <a href="mailto:snaptikdou@gmail.com" className="text-[#8E8E93] hover:text-[var(--accent-blue)] font-medium hover:underline">
                 snaptikdou@gmail.com
               </a>
             </div>
@@ -644,7 +644,7 @@ export default function App() {
             </h4>
             <ul className="space-y-2 text-xs">
               <li>
-                <a href="https://facebook.com" target="_blank" rel="noreferrer" className="text-[#1C1C1E] hover:text-[var(--accent-blue)] transition">
+                <a href="https://facebook.com" target="_blank" rel="noreferrer" className="hover:text-[var(--accent-blue)] transition">
                   Facebook
                 </a>
               </li>
@@ -656,17 +656,17 @@ export default function App() {
               {t('footerLegal')}
             </h4>
             <ul className="space-y-2.5 text-xs">
-              <li><button onClick={() => setShowTermsModal(true)} className="text-[#1C1C1E] hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('termsOfService')}</button></li>
-              <li><button onClick={() => setShowPrivacyModal(true)} className="text-[#1C1C1E] hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('privacyPolicy')}</button></li>
-              <li><button onClick={() => setShowCookieModal(true)} className="text-[#1C1C1E] hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('cookiePolicy')}</button></li>
-              <li className="text-[#1C1C1E]"><button onClick={() => setShowDisclaimerModal(true)} className="text-[#1C1C1E] hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('disclaimerTitle')}</button></li>
-              <li><button onClick={() => setShowDmcaModal(true)} className="text-[#1C1C1E] hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">DMCA</button></li>
+              <li><button onClick={() => setShowTermsModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('termsOfService')}</button></li>
+              <li><button onClick={() => setShowPrivacyModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('privacyPolicy')}</button></li>
+              <li><button onClick={() => setShowCookieModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('cookiePolicy')}</button></li>
+              <li><button onClick={() => setShowDisclaimerModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">{t('disclaimerTitle')}</button></li>
+              <li><button onClick={() => setShowDmcaModal(true)} className="hover:text-[var(--accent-blue)] transition-colors text-left cursor-pointer">DMCA</button></li>
             </ul>
           </div>
         </div>
 
-        <div className="max-w-5xl mx-auto pt-6 border-t border-[var(--border-subtle)] text-center text-[#1C1C1E]">
-          <p className="text-xs text-[#1C1C1E]">
+        <div className="max-w-5xl mx-auto pt-6 border-t border-[var(--border-subtle)] text-center">
+          <p className="text-xs text-[var(--text-secondary)]">
             © 2026 <strong className="text-[var(--text-primary)] font-semibold">SnapTikDou</strong>. All rights reserved.
           </p>
         </div>

@@ -6,16 +6,26 @@ export const SUPPORTED_LANGS: SupportedLang[] = ['vi', 'en', 'zh', 'hi', 'ar', '
 
 // 1. Hàm lấy ngôn ngữ khởi tạo
 export const getInitialLanguage = (): SupportedLang => {
-  if (typeof window === 'undefined') return 'en'; // Đặt tiếng Anh làm mặc định trên Server-Side
+  if (typeof window === 'undefined') return 'vi';
 
-  // 1. Kiểm tra lựa chọn đã lưu trong localStorage
+  // Kiểm tra lựa chọn cũ đã lưu trong localStorage
   const savedLang = localStorage.getItem('snaptikdou_lang') as SupportedLang;
   if (savedLang && SUPPORTED_LANGS.includes(savedLang)) {
     return savedLang;
   }
 
-  // 2. Nếu chưa lưu, ưu tiên trả về tiếng Anh làm mặc định thay vì tiếng Việt
-  return 'en'; 
+  // Nếu lần đầu truy cập: Tự dò ngôn ngữ hệ điều hành/trình duyệt của khách
+  const browserLang = (navigator.language || 'vi').toLowerCase();
+  if (browserLang.startsWith('hi')) return 'hi';
+  if (browserLang.startsWith('zh')) return 'zh';
+  if (browserLang.startsWith('ar')) return 'ar';
+  if (browserLang.startsWith('es')) return 'es';
+  if (browserLang.startsWith('fr')) return 'fr';
+  if (browserLang.startsWith('id')) return 'id';
+  if (browserLang.startsWith('ru')) return 'ru';
+  if (browserLang.startsWith('en')) return 'en';
+
+  return 'vi'; // Mặc định trả về tiếng Việt nếu không trùng khớp
 };
 
 // 2. Hàm lưu ngôn ngữ khi người dùng chuyển đổi

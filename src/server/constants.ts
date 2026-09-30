@@ -61,33 +61,25 @@ export function isTikTokUrl(url: string): boolean {
   return /tiktok\.com/i.test(url);
 }
 
-export const ALLOWED_MEDIA_DOMAINS = [
-  'douyin.com',
-  'iesdouyin.com',
-  'douyinvod.com',
-  'douyinstatic.com',
-  'douyinpic.com',
-  'byteimg.com',
-  'zjcdn.com',
-  'snssdk.com',
-  'ixigua.com',
-  'pstatp.com',
-  'tiktok.com',
-  'tiktokcdn.com',
-  'tiktokv.com',
-  'tikwm.com',
-  'ibytedtos.com',
-  'byteoversea.com',
-];
-
 export function isSafeMediaUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false;
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
     const hostname = parsed.hostname.toLowerCase();
-    return ALLOWED_MEDIA_DOMAINS.some(
-      (domain) => hostname === domain || hostname.endsWith('.' + domain)
+    return (
+      hostname.endsWith('douyin.com') ||
+      hostname.endsWith('iesdouyin.com') ||
+      hostname.endsWith('douyinvod.com') ||
+      hostname.endsWith('byteimg.com') ||
+      hostname.endsWith('zjcdn.com') ||
+      hostname.endsWith('snssdk.com') ||
+      hostname.endsWith('ixigua.com') ||
+      hostname.endsWith('pstatp.com') ||
+      hostname.endsWith('tiktok.com') ||
+      hostname.endsWith('tiktokcdn.com') ||
+      hostname.endsWith('tiktokv.com') ||
+      hostname.endsWith('tikwm.com')
     );
   } catch {
     return false;
