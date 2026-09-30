@@ -295,48 +295,10 @@ app.all('/api/tiktok/download', downloadRateLimiter, async (req: Request, res: R
     // 1. LUỒNG XỬ LÝ ÂM THANH (AUDIO / MP3)
     // ==========================================
     if (isMp3Request) {
-      const directAudioUrl = rawUrl || fallbackUrl;
-      if (directAudioUrl && !directAudioUrl.includes('.mp4')) {
-        // BẢO MẬT: Kiểm tra URL trực tiếp
-        if (!isSafeMediaUrl(directAudioUrl)) {
-          res.status(400).json({ success: false, message: 'URL audio không hợp lệ hoặc không an toàn' });
-          return;
-        }
-
-        const isDouyinAudio = checkIsDouyin(directAudioUrl) || checkIsDouyin(postUrl);
-        const audioResponse = await fetchMediaWithRetry(directAudioUrl, { isDouyin: isDouyinAudio });
-        if (isValidMediaResponse(audioResponse) && audioResponse?.body) {
-          const safeFilename = requestedFilename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\;]/g, '_').trim() || 'audio.mp3';
-          const encodedFilename = encodeURIComponent(requestedFilename);
-          res.setHeader('Content-Type', 'audio/mpeg');
-          res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
-          res.setHeader('X-Content-Type-Options', 'nosniff');
-          res.setHeader('Accept-Ranges', 'bytes');
-          const upstreamLength = audioResponse.headers.get('content-length');
-          if (upstreamLength) res.setHeader('Content-Length', upstreamLength);
-
-          setSessionActive(downloadToken, true);
-          res.on('close', () => {
-            if (!res.writableEnded) setSessionActive(downloadToken, false);
-          });
-          if (res.socket) {
-            res.socket.setNoDelay(true);
-          }
-          const streamToPipe =
-            typeof (audioResponse.body as any)?.getReader === 'function'
-              ? Readable.fromWeb(audioResponse.body as any, { highWaterMark: 512 * 1024 })
-              : audioResponse.body;
-          await pipeline(streamToPipe as any, res);
-          setSessionCompleted(downloadToken);
-          return;
-        }
-      }
-
       const transcodeSource = videoFallback || rawUrl || fallbackUrl;
       if (transcodeSource) {
-        // BẢO MẬT: Kiểm tra URL nguồn transcode
         if (!isSafeMediaUrl(transcodeSource)) {
-          res.status(400).json({ success: false, message: 'URL nguồn video không hợp lệ hoặc không an toàn' });
+          res.status(400).json({ success: false, message: 'URL nguồn video không an toàn' });
           return;
         }
         return transcodeVideoToMp3Stream(transcodeSource, res, requestedFilename, downloadToken);
